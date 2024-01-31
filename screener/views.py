@@ -5,17 +5,14 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from .models import StockData
 import requests
+import os
 
-API_KEY = 'your_alpha_vantage_api_key'
+# API_KEY = os.environ.get('ALPHA_VANTAGE_API_KEY')
+DATA_SECTION = 'Time Series (1min)'
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class StockDataView(View):
-
-    def create_table(self):
-        # Check if table exists, create if not
-        if not StockData._meta.db_table in connection.introspection.table_names():
-            with connection.schema_editor() as schema_editor:
-                schema_editor.create_model(StockData)
 
     def insert_data(self, data):
         stock_data = StockData(**data)
@@ -24,7 +21,7 @@ class StockDataView(View):
     def get_stock_data(self, symbol):
         base_url = 'https://www.alphavantage.co/query'
         function = 'TIME_SERIES_INTRADAY'
-        interval = '5min'
+        interval = '1min'
 
         params = {
             'function': function,
@@ -36,8 +33,8 @@ class StockDataView(View):
         response = requests.get(base_url, params=params)
         data = response.json()
 
-        if 'Time Series (5min)' in data:
-            latest_data = list(data['Time Series (5min)'].items())[0][1]
+        if DATA_SECTION in data:
+            latest_data = list(data[DATA_SECTION].items())[0][1]
             return {
                 'symbol': symbol,
                 'price_open': float(latest_data['1. open']),
@@ -51,7 +48,7 @@ class StockDataView(View):
 
     def fetch_and_insert_data(self):
         # Read S&P 500 symbols from a file
-        with open('sp500_symbols.txt', 'r') as file:
+        with open('./settings/sp500_symbols.txt', 'r') as file:
             sp500_symbols = [symbol.strip() for symbol in file]
 
         for symbol in sp500_symbols:
@@ -61,6 +58,5 @@ class StockDataView(View):
                 print(f"Data inserted for {symbol}")
 
     def get(self, request, *args, **kwargs):
-        self.create_table()
         self.fetch_and_insert_data()
         return HttpResponse("Data fetched and inserted successfully.")
