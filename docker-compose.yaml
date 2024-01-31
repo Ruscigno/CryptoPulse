@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  # PostgreSQL database service
+  db:
+    image: postgres:latest
+    container_name: stock_screener_db
+    restart: always
+    environment:
+      POSTGRES_DB: stock_screener_db
+      POSTGRES_USER: airplane
+      POSTGRES_PASSWORD: boeing.airbus.embraer
+    ports:
+      - "5432:5432"
+    networks:
+      - django_net
+
+  # # Django web application service
+  # web:
+  #   image: python:3.8
+  #   command: bash -c "pip install -r requirements.txt && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+  #   depends_on:
+  #     - db
+  #   volumes:
+  #     - .:/app
+  #   ports:
+  #     - "8000:8000"
+  #   networks:
+  #     - django_net
+
+networks:
+  django_net:
+    driver: bridge
