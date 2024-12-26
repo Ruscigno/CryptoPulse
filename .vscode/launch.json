@@ -5,15 +5,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Django",
-            "type": "debugpy",
+            "name": "Launch file",
+            "type": "go",
             "request": "launch",
-            "program": "${workspaceFolder}/manage.py",
-            "args": [
-                "runserver"
-            ],
-            "django": true,
-            "justMyCode": true
-        }
+            "mode": "auto",
+            "program": "${fileDirname}",
+            "env": {},
+            "args": ["serve"]
+        },
     ]
 }
