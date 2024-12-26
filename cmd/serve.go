@@ -1,8 +1,7 @@
 package cmd
 
 import (
-	"log"
-
+	"github.com/Ruscigno/stockscreener/stockscrapper"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -13,10 +12,7 @@ var serveCmd = &cobra.Command{
 	Short: "start http server with configured api",
 	Long:  `Starts a http server and serves the configured api`,
 	Run: func(cmd *cobra.Command, args []string) {
-		server, err := api.NewServer()
-		if err != nil {
-			log.Fatal(err)
-		}
+		server := stockscrapper.NewServer()
 		server.Start()
 	},
 }
