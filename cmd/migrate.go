@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Ruscigno/stock-screener/database/migrations"
+	"github.com/Ruscigno/stockscreener/database/migrations"
 )
 
 // migrateCmd represents the migrate command

@@ -1,93 +1,23 @@
 package stockscrapper
 
 import (
-	"log"
+	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
-
-	"github.com/google/uuid"
+	"time"
 )
 
 const (
-	NumberOfWorkers = 5
+	stockListFile    = "stocklist.json"
+	defaultTimeFrame = "1m"
 )
 
 type Server struct {
 	scraper StockScrapper
-}
-
-// Task represents a unit of work with an idempotent key.
-type Task struct {
-	ID        string
-	Symbol    string
-	TimeFrame string
-}
-
-// WorkerPool manages a pool of workers that process tasks.
-type WorkerPool struct {
-	wg        sync.WaitGroup
-	tasks     chan Task
-	workers   int
-	quit      chan struct{}
-	processed map[string]bool // Set to track processed task IDs
-	scraper   StockScrapper
-}
-
-// NewWorkerPool creates a new WorkerPool with the specified number of workers.
-func NewWorkerPool(workers int, scraper StockScrapper) *WorkerPool {
-	return &WorkerPool{
-		workers:   workers,
-		tasks:     make(chan Task, 100), // Buffered channel for tasks
-		quit:      make(chan struct{}),
-		processed: make(map[string]bool),
-		scraper:   scraper,
-	}
-}
-
-// Start starts the worker pool.
-func (wp *WorkerPool) Start() {
-	for i := 0; i < wp.workers; i++ {
-		wp.wg.Add(1)
-		go wp.worker()
-	}
-}
-
-// Stop gracefully stops the worker pool.
-func (wp *WorkerPool) Stop() {
-	close(wp.quit)
-	wp.wg.Wait()
-}
-
-// Enqueue adds a task to the queue.
-func (wp *WorkerPool) Enqueue(task Task) {
-	wp.tasks <- task
-}
-
-// worker is the function executed by each worker goroutine.
-func (wp *WorkerPool) worker() {
-	defer wp.wg.Done()
-
-	for {
-		select {
-		case task := <-wp.tasks:
-			if _, exists := wp.processed[task.ID]; !exists {
-				// Process the task
-				log.Printf("Worker processing task: %s-%s", task.Symbol, task.TimeFrame)
-				// Simulate task processing with a short delay
-				wp.scraper.DownloadStockData(task.Symbol, task.TimeFrame)
-				wp.processed[task.ID] = true
-
-				// Requeue the task
-				wp.Enqueue(task)
-			} else {
-				log.Printf("Task already processed: %s", task.ID)
-			}
-		case <-wp.quit:
-			return
-		}
-	}
 }
 
 func NewServer() *Server {
@@ -96,21 +26,78 @@ func NewServer() *Server {
 	}
 }
 
-func (s *Server) Start(symbolList []string) {
-	// Create a new worker pool with 5 workers
-	pool := NewWorkerPool(NumberOfWorkers, s.scraper)
-	pool.Start()
+func (s *Server) worker(id int, done chan bool, stock string, timeFrame time.Duration) {
+	if 1 != 2 {
+		timeFrame = time.Duration(10) * time.Second
+	}
+	ticker := time.NewTicker(timeFrame)
+	defer ticker.Stop()
 
-	// Generate and enqueue some sample tasks
-	for _, symbol := range symbolList {
-		task := Task{ID: uuid.New().String(), Symbol: symbol, TimeFrame: "1m"}
-		pool.Enqueue(task)
+	for {
+		select {
+		case <-ticker.C:
+			err := s.scraper.DownloadStockData(stock, defaultTimeFrame)
+			if err != nil {
+				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, stock, err)
+			}
+			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, stock)
+		case <-done:
+			fmt.Printf("Worker %d: Exiting\n", id)
+			return
+		}
+	}
+}
+
+func (s *Server) Start() {
+	stockList, err := readStockList(stockListFile)
+	if err != nil {
+		fmt.Printf("Error reading stock list: %v\n", err)
+		return
 	}
 
-	// Handle graceful shutdown
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
-	log.Println("Received termination signal")
-	pool.Stop()
+	var wg sync.WaitGroup
+	done := make(chan bool)
+
+	// Start worker goroutines
+	for i, stock := range stockList {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			s.worker(id, done, stock, time.Duration(1)*time.Minute)
+		}(i)
+	}
+
+	// Handle signals
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Wait for a signal
+	<-sigchan
+	fmt.Println("Received termination signal. Shutting down...")
+
+	// Signal workers to stop
+	close(done)
+
+	// Wait for workers to finish
+	wg.Wait()
+	fmt.Println("All workers exited. Exiting main.")
+}
+
+// readStockList reads a list of stock symbols from a file.
+func readStockList(filename string) ([]string, error) {
+	jsonFile, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	byteValue, err := io.ReadAll(jsonFile)
+	if err != nil {
+		return nil, err
+	}
+	type SymbolList map[string][]string
+	var symbols SymbolList
+	err = json.Unmarshal(byteValue, &symbols)
+	if err != nil {
+		return nil, err
+	}
+	return symbols["stock"], nil
 }

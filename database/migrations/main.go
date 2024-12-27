@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/Ruscigno/stock-screener/database"
+	"github.com/Ruscigno/stockscreener/database"
 	"github.com/uptrace/bun/migrate"
 )
 

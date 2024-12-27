@@ -1,6 +1,6 @@
 package main
 
-import "github.com/Ruscigno/stock-screener/cmd"
+import "github.com/Ruscigno/stockscreener/cmd"
 
 func main() {
 	cmd.Execute()

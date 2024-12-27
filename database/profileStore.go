@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Ruscigno/stock-screener/models"
+	"github.com/Ruscigno/stockscreener/models"
 	"github.com/uptrace/bun"
 )
 
