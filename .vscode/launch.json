@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "main.go",
-            "env": {},
+            "envFile": "${workspaceFolder}/dev.env",
             "args": ["serve"]
         },
     ]

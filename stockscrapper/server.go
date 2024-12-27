@@ -1,6 +1,7 @@
 package stockscrapper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,11 +10,18 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
 const (
-	stockListFile    = "stocklist.json"
-	defaultTimeFrame = "1m"
+	stockListFile = "stocklist.json"
+)
+
+var (
+	INFLUXDB_TOKEN string = os.Getenv("INFLUXDB_TOKEN")
+	INFLUX_URL     string = os.Getenv("INFLUX_URL")
+	API_KEY        string = os.Getenv("ALPHA_VANTAGE_API_KEY")
 )
 
 type Server struct {
@@ -22,25 +30,26 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		scraper: NewStockScrapper(),
+		scraper: NewStockScrapper(API_KEY),
 	}
 }
 
-func (s *Server) worker(id int, done chan bool, stock string, timeFrame time.Duration) {
+func (s *Server) worker(client influxdb2.Client, id int, done chan bool, ticker string, timeFrame time.Duration) {
 	if 1 != 2 {
 		timeFrame = time.Duration(10) * time.Second
 	}
-	ticker := time.NewTicker(timeFrame)
-	defer ticker.Stop()
+	clock := time.NewTicker(timeFrame)
+	defer clock.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			err := s.scraper.DownloadStockData(stock, defaultTimeFrame)
+		case <-clock.C:
+			ctx := context.Background()
+			err := s.scraper.DownloadStockData(ctx, client, ticker)
 			if err != nil {
-				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, stock, err)
+				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, ticker, err)
 			}
-			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, stock)
+			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, ticker)
 		case <-done:
 			fmt.Printf("Worker %d: Exiting\n", id)
 			return
@@ -55,6 +64,9 @@ func (s *Server) Start() {
 		return
 	}
 
+	client := influxdb2.NewClient(INFLUX_URL, INFLUXDB_TOKEN)
+	defer client.Close()
+
 	var wg sync.WaitGroup
 	done := make(chan bool)
 
@@ -63,7 +75,7 @@ func (s *Server) Start() {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			s.worker(id, done, stock, time.Duration(1)*time.Minute)
+			s.worker(client, id, done, stock, time.Duration(1)*time.Minute)
 		}(i)
 	}
 
