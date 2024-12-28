@@ -17,9 +17,9 @@ type StockScrapper interface {
 }
 
 type stockScrapper struct {
-	apiKey   string
-	lastDate time.Time
-	influx   influxdb2.Client
+	apiKey      string
+	lastestDate time.Time
+	influx      influxdb2.Client
 }
 
 type AlphaVantageMarketData struct {
@@ -54,12 +54,12 @@ const (
 	OUTPUT_SIZE       = "full" // Full data set
 	DATA_TYPE         = "json" // Output format
 	ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
+	DEFAULT_TIME_ZONE = "US/Eastern"
 )
 
 var (
 	INFLUX_ORG    string = os.Getenv("INFLUX_ORG")
 	INFLUX_BUCKET string = os.Getenv("INFLUX_BUCKET")
-	INFLUX_ORG_ID string = os.Getenv("INFLUX_ORG_ID")
 )
 
 func NewStockScrapper(apiKey string) StockScrapper {
@@ -76,27 +76,33 @@ func (s *stockScrapper) DownloadStockData(ctx context.Context, client influxdb2.
 		return fmt.Errorf("influxdb client is nil")
 	}
 	s.influx = client
-	s.lastDate = s.getLastDate(ticker)
+	s.lastestDate = s.getLastDate(ctx, ticker)
+	lastestDate := time.Time{}
 
-	var result *AlphaVantageMarketData
 	// build a list of months to download, from the lastDate to the current date
-	months := buildMonths(s.lastDate)
+	months := buildMonths(s.lastestDate)
 	// iterate over the months and download the data
 	for _, month := range months {
 		monthlyData, err := s.downloadStockData(ticker, month)
 		if err != nil {
 			return err
 		}
-		if result == nil {
-			result = monthlyData
+		if monthlyData == nil {
 			continue
 		}
-		result.TimeSeries = append(result.TimeSeries, monthlyData.TimeSeries...)
+		err = s.storeStockData(ctx, monthlyData)
+		if err != nil {
+			log.Printf("Error storing stock data: %v\n", err)
+		}
+		log.Printf("Downloaded stock data for %s:%s\n", ticker, month.Format("2006-01"))
+		if monthlyData.MetaData.LastRefreshed.After(lastestDate) {
+			lastestDate = monthlyData.MetaData.LastRefreshed
+		}
 	}
-	err := s.storeStockData(ctx, result)
-	if err != nil {
-		log.Printf("Error storing stock data: %v\n", err)
+	if !lastestDate.IsZero() {
+		s.lastestDate = lastestDate
 	}
+	log.Printf("Downloaded stock data for %s, latest date:%s\n", ticker, s.lastestDate.Format("2006-01-02"))
 	return nil
 }
 
@@ -144,16 +150,45 @@ func (s *stockScrapper) downloadStockData(symbol string, month time.Time) (*Alph
 	return data, nil
 }
 
-func (s *stockScrapper) getLastDate( /*symbol*/ _ string) time.Time {
-	if s.lastDate.IsZero() {
-		return time.Now().UTC().AddDate(0, -12, 0)
+func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Time {
+	if !s.lastestDate.IsZero() {
+		return s.lastestDate
 	}
-	return s.lastDate
+	// query influxdb for the last date
+	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUX_BUCKET, symbol)
+	result, err := s.influx.QueryAPI(INFLUX_ORG).Query(ctx, query)
+	if err != nil {
+		log.Printf("Error querying influxdb: %v\n", err)
+		return time.Time{}
+	}
+	defer result.Close()
+	timeZone := DEFAULT_TIME_ZONE
+	for result.Next() {
+		record := result.Record()
+		if record == nil {
+			continue
+		}
+		if s.lastestDate.Before(record.Time()) {
+			s.lastestDate = record.Time()
+		}
+		if record.Field() == "time_zone" {
+			timeZone = record.Value().(string)
+			break
+		}
+	}
+	if s.lastestDate.IsZero() {
+		s.lastestDate = time.Now().AddDate(0, 0, -365)
+	}
+	s.lastestDate = s.lastestDate.In(time.FixedZone(timeZone, 0))
+	return s.lastestDate
 }
 
 func (s *stockScrapper) storeStockData(ctx context.Context, data *AlphaVantageMarketData) error {
 	writeAPI := s.influx.WriteAPIBlocking(INFLUX_ORG, INFLUX_BUCKET)
 	for _, stockData := range data.TimeSeries {
+		if stockData.Time.Before(s.lastestDate) {
+			continue
+		}
 		p := influxdb2.NewPointWithMeasurement("stock_data").
 			AddTag("symbol", stockData.Symbol).
 			AddField("open", stockData.Open).
@@ -161,6 +196,7 @@ func (s *stockScrapper) storeStockData(ctx context.Context, data *AlphaVantageMa
 			AddField("low", stockData.Low).
 			AddField("close", stockData.Close).
 			AddField("volume", stockData.Volume).
+			AddField("time_zone", data.MetaData.TimeZone).
 			SetTime(stockData.Time)
 		err := writeAPI.WritePoint(context.Background(), p)
 		if err != nil {
@@ -168,30 +204,4 @@ func (s *stockScrapper) storeStockData(ctx context.Context, data *AlphaVantageMa
 		}
 	}
 	return writeAPI.Flush(ctx)
-}
-
-func parseFloat(s string) float64 {
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	if err != nil {
-		log.Printf("Error parsing float: %v\n", err)
-	}
-	return f
-}
-
-func parseInt(s string) int64 {
-	var i int64
-	_, err := fmt.Sscanf(s, "%d", &i)
-	if err != nil {
-		log.Printf("Error parsing int: %v\n", err)
-	}
-	return i
-}
-
-func parseTime(s string) time.Time {
-	t, err := time.Parse("2006-01-02 15:04:05", s)
-	if err != nil {
-		log.Printf("Error parsing time: %v\n", err)
-	}
-	return t
 }

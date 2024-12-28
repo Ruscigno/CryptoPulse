@@ -19,6 +19,7 @@ const (
 	FIELD_LOW            = "3. low"
 	FIELD_CLOSE          = "4. close"
 	FIELD_VOLUME         = "5. volume"
+	TIME_LAYOUT          = "2006-01-02 15:04:05"
 )
 
 type APIResponse struct {
@@ -31,20 +32,29 @@ func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
+	if response.MetaData == nil {
+		return nil, nil
+	}
+	if response.TimeSeries == nil {
+		return nil, nil
+	}
 
 	alphavantage := AlphaVantageMarketData{
 		MetaData: &MetaData{
 			Information: response.MetaData[FIELD_INFORMATION],
 			Symbol:      response.MetaData[FIELD_SYMBOL],
-			LastRefreshed: func() time.Time {
-				t, _ := time.Parse("2006-01-02 15:04:05", response.MetaData[FIELD_LAST_REFRESHED])
-				return t
-			}(),
-			Interval:   response.MetaData[FIELD_INTERVAL],
-			OutputSize: response.MetaData[FIELD_OUTPUT_SIZE],
-			TimeZone:   response.MetaData[FIELD_TIME_ZONE],
+			Interval:    response.MetaData[FIELD_INTERVAL],
+			OutputSize:  response.MetaData[FIELD_OUTPUT_SIZE],
+			TimeZone:    response.MetaData[FIELD_TIME_ZONE],
 		},
 	}
+	var err error
+	alphavantage.MetaData.LastRefreshed, err = parseTime(response.MetaData[FIELD_LAST_REFRESHED], alphavantage.MetaData.TimeZone)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last refreshed time: %v", err)
+	}
+
+	alphavantage.MetaData.LastRefreshed = alphavantage.MetaData.LastRefreshed.In(time.FixedZone(alphavantage.MetaData.TimeZone, 0))
 	for timestamp, data := range response.TimeSeries {
 		open, err := strconv.ParseFloat(data[FIELD_OPEN], 64)
 		if err != nil {
@@ -71,12 +81,10 @@ func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
 			return nil, fmt.Errorf("failed to parse volume value: %v", err)
 		}
 
-		t, err := time.Parse("2006-01-02 15:04:05", timestamp)
+		t, err := parseTime(timestamp, alphavantage.MetaData.TimeZone)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse timestamp: %v", err)
 		}
-		// set the proper timezone from alphavantage.MetaData.TimeZone
-		t = t.In(time.FixedZone(alphavantage.MetaData.TimeZone, 0))
 
 		stockData := &StockData{
 			Symbol: alphavantage.MetaData.Symbol,
@@ -87,9 +95,24 @@ func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
 			Volume: volume,
 			Time:   t,
 		}
-
 		alphavantage.TimeSeries = append(alphavantage.TimeSeries, stockData)
 	}
 
 	return &alphavantage, nil
+}
+
+func parseTime(timestamp string, timeZone string) (time.Time, error) {
+	location, err := time.LoadLocation(timeZone)
+	if err != nil {
+		fmt.Printf("Error loading timezone: %v\n", err)
+		return time.Time{}, err
+	}
+
+	// Parse the time string in the specified timezone
+	parsedTime, err := time.ParseInLocation(TIME_LAYOUT, timestamp, location)
+	if err != nil {
+		fmt.Printf("Error parsing time: %v\n", err)
+		return time.Time{}, err
+	}
+	return parsedTime, nil
 }

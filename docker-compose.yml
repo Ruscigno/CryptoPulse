@@ -15,15 +15,15 @@ services:
   #     #DB_PASSWORD: postgres
   #     #DB_DATABASE: postgres
       
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    ports:
-      - 51432:5432
-    volumes:
-      - postgres:/var/lib/postgresql/data
-    environment:
-      POSTGRES_PASSWORD: postgres
+  # postgres:
+  #   image: postgres:16
+  #   restart: unless-stopped
+  #   ports:
+  #     - 51432:5432
+  #   volumes:
+  #     - postgres:/var/lib/postgresql/data
+  #   environment:
+  #     POSTGRES_PASSWORD: postgres
 
   influxdb:
     image: influxdb:2.1
