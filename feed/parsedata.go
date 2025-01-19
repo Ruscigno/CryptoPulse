@@ -1,10 +1,12 @@
-package stockscrapper
+package feed
 
 import (
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/Ruscigno/stockscreener/model"
 )
 
 const (
@@ -27,7 +29,7 @@ type APIResponse struct {
 	TimeSeries map[string]map[string]string `json:"Time Series (1min)"`
 }
 
-func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
+func parseStockData(jsonData []byte) (*model.MarketData, error) {
 	var response APIResponse
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %v", err)
@@ -39,8 +41,8 @@ func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
 		return nil, nil
 	}
 
-	alphavantage := AlphaVantageMarketData{
-		MetaData: &MetaData{
+	alphavantage := model.MarketData{
+		MetaData: &model.MetaData{
 			Information: response.MetaData[FIELD_INFORMATION],
 			Symbol:      response.MetaData[FIELD_SYMBOL],
 			Interval:    response.MetaData[FIELD_INTERVAL],
@@ -86,7 +88,7 @@ func parseStockData(jsonData []byte) (*AlphaVantageMarketData, error) {
 			return nil, fmt.Errorf("failed to parse timestamp: %v", err)
 		}
 
-		stockData := &StockData{
+		stockData := &model.StockData{
 			Symbol: alphavantage.MetaData.Symbol,
 			Open:   open,
 			High:   high,

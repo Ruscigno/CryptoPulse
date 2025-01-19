@@ -3,12 +3,12 @@ package stockscrapper
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"time"
 
+	"github.com/Ruscigno/stockscreener/feed"
+	"github.com/Ruscigno/stockscreener/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -17,57 +17,34 @@ type StockScrapper interface {
 }
 
 type stockScrapper struct {
-	apiKey      string
 	lastestDate time.Time
 	influx      influxdb2.Client
-}
-
-type AlphaVantageMarketData struct {
-	MetaData   *MetaData    `json:"meta_data"`
-	TimeSeries []*StockData `json:"time_series"`
-}
-
-type MetaData struct {
-	Information   string    `json:"information"`
-	Symbol        string    `json:"symbol"`
-	LastRefreshed time.Time `json:"last_refreshed"`
-	Interval      string    `json:"interval"`
-	OutputSize    string    `json:"output_size"`
-	TimeZone      string    `json:"time_zone"`
-}
-
-type StockData struct {
-	Symbol string    `json:"symbol"`
-	Open   float64   `json:"open"`
-	High   float64   `json:"high"`
-	Low    float64   `json:"low"`
-	Close  float64   `json:"close"`
-	Volume int64     `json:"volume"`
-	Time   time.Time `json:"timestamp"`
+	feed        feed.FeedConsumer
 }
 
 const (
-	FUNCTION          = "TIME_SERIES_INTRADAY"
-	EXTENDED_HOURS    = "true" // Extended hours data
-	ADJUSTED          = "true" // Adjusted data
-	INTERVAL          = "1min" // Time interval for intraday data
-	OUTPUT_SIZE       = "full" // Full data set
-	DATA_TYPE         = "json" // Output format
-	ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 	DEFAULT_TIME_ZONE = "US/Eastern"
 )
 
 var (
-	INFLUX_ORG    string = os.Getenv("INFLUX_ORG")
-	INFLUX_BUCKET string = os.Getenv("INFLUX_BUCKET")
+	INFLUX_ORG         string = os.Getenv("INFLUX_ORG")
+	INFLUX_BUCKET      string = os.Getenv("INFLUX_BUCKET")
+	DATA_FEED_PROVIDER string = os.Getenv("DATA_FEED_PROVIDER")
 )
 
-func NewStockScrapper(apiKey string) StockScrapper {
-	if apiKey == "" {
-		log.Fatal("Alpha Vantage API key is missing. Please set the 'apiKey' variable.")
-	}
-	return &stockScrapper{
-		apiKey: apiKey,
+func NewStockScrapper() StockScrapper {
+	switch DATA_FEED_PROVIDER {
+	case feed.DataFeedProviderLocal:
+		return &stockScrapper{
+			feed: feed.NewLocalDataFeed(),
+		}
+	case feed.DataFeedProviderAlphaVantage:
+		return &stockScrapper{
+			feed: feed.NewAlphaVantageScrapper(),
+		}
+	default:
+		log.Fatalf("Unsupported data feed provider: %s", DATA_FEED_PROVIDER)
+		return nil
 	}
 }
 
@@ -83,7 +60,7 @@ func (s *stockScrapper) DownloadStockData(ctx context.Context, client influxdb2.
 	months := buildMonths(s.lastestDate)
 	// iterate over the months and download the data
 	for _, month := range months {
-		monthlyData, err := s.downloadStockData(ticker, month)
+		monthlyData, err := s.feed.DownloadStockData(ticker, month)
 		if err != nil {
 			return err
 		}
@@ -94,7 +71,6 @@ func (s *stockScrapper) DownloadStockData(ctx context.Context, client influxdb2.
 		if err != nil {
 			log.Printf("Error storing stock data: %v\n", err)
 		}
-		log.Printf("Downloaded stock data for %s:%s\n", ticker, month.Format("2006-01"))
 		if monthlyData.MetaData.LastRefreshed.After(lastestDate) {
 			lastestDate = monthlyData.MetaData.LastRefreshed
 		}
@@ -118,36 +94,6 @@ func buildMonths(lastDate time.Time) []time.Time {
 	}
 
 	return months
-}
-
-func (s *stockScrapper) downloadStockData(symbol string, month time.Time) (*AlphaVantageMarketData, error) {
-	// format month as "YYYY-MM"
-	monthStr := month.Format("2006-01")
-	// Build the URL
-	queryURL := fmt.Sprintf("%s?function=%s&symbol=%s&adjusted=%s&interval=%s&outputsize=%s&datatype=%s&month=%s&apikey=%s",
-		ALPHA_VANTAGE_URL, FUNCTION, symbol, ADJUSTED, INTERVAL, OUTPUT_SIZE, DATA_TYPE, monthStr, s.apiKey)
-
-	// Perform the HTTP request
-	resp, err := http.Get(queryURL)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("non-200 response: %s", resp.Status)
-	}
-
-	// save the body as csv
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
-	}
-	data, err := parseStockData(body)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing stock data: %v", err)
-	}
-	return data, nil
 }
 
 func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Time {
@@ -183,7 +129,7 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 	return s.lastestDate
 }
 
-func (s *stockScrapper) storeStockData(ctx context.Context, data *AlphaVantageMarketData) error {
+func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketData) error {
 	writeAPI := s.influx.WriteAPIBlocking(INFLUX_ORG, INFLUX_BUCKET)
 	for _, stockData := range data.TimeSeries {
 		if stockData.Time.Before(s.lastestDate) {

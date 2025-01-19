@@ -21,7 +21,6 @@ const (
 var (
 	INFLUXDB_TOKEN string = os.Getenv("INFLUXDB_TOKEN")
 	INFLUX_URL     string = os.Getenv("INFLUX_URL")
-	API_KEY        string = os.Getenv("ALPHA_VANTAGE_API_KEY")
 )
 
 type Server struct {
@@ -30,7 +29,7 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		scraper: NewStockScrapper(API_KEY),
+		scraper: NewStockScrapper(),
 	}
 }
 
