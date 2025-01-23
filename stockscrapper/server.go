@@ -24,16 +24,22 @@ var (
 )
 
 type Server struct {
-	scraper StockScrapper
+	scraper  StockScrapper
+	timeZone string
 }
 
 func NewServer() *Server {
-	return &Server{
-		scraper: NewStockScrapper(),
-	}
+	srv := &Server{}
+	srv.getServerInfo()
+	srv.scraper = NewStockScrapper()
+	return srv
 }
 
-func (s *Server) worker(client influxdb2.Client, id int, done chan bool, ticker string, timeFrame time.Duration) {
+func (s *Server) getServerInfo() {
+
+}
+
+func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol string, timeFrame time.Duration) {
 	if 1 != 2 {
 		timeFrame = time.Duration(10) * time.Second
 	}
@@ -44,11 +50,11 @@ func (s *Server) worker(client influxdb2.Client, id int, done chan bool, ticker 
 		select {
 		case <-clock.C:
 			ctx := context.Background()
-			err := s.scraper.DownloadStockData(ctx, client, ticker)
+			err := s.scraper.DownloadMarketData(ctx, client, symbol)
 			if err != nil {
-				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, ticker, err)
+				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, symbol, err)
 			}
-			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, ticker)
+			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, symbol)
 		case <-done:
 			fmt.Printf("Worker %d: Exiting\n", id)
 			return
@@ -70,11 +76,11 @@ func (s *Server) Start() {
 	done := make(chan bool)
 
 	// Start worker goroutines
-	for i, stock := range stockList {
+	for i, symbol := range stockList {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			s.worker(client, id, done, stock, time.Duration(1)*time.Minute)
+			s.worker(client, id, done, symbol, time.Duration(1)*time.Minute)
 		}(i)
 	}
 

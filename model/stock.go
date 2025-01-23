@@ -17,11 +17,13 @@ type MetaData struct {
 }
 
 type StockData struct {
-	Symbol string    `json:"symbol"`
-	Open   float64   `json:"open"`
-	High   float64   `json:"high"`
-	Low    float64   `json:"low"`
-	Close  float64   `json:"close"`
-	Volume int64     `json:"volume"`
-	Time   time.Time `json:"timestamp"`
+	Symbol    string    `json:"symbol"`
+	Open      float64   `json:"open"`
+	High      float64   `json:"high"`
+	Low       float64   `json:"low"`
+	Close     float64   `json:"close"`
+	Volume    int64     `json:"volume"`
+	OpenTime  time.Time `json:"open_time"`
+	CloseTime time.Time `json:"close_time"`
+	QuoteVol  float64   `json:"quote_volume"`
 }

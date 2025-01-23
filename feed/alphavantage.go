@@ -35,21 +35,21 @@ func NewAlphaVantageScrapper() FeedConsumer {
 	return &alphaVantageScrapper{}
 }
 
-func (s *alphaVantageScrapper) DownloadStockData(ticker string, lastestDate time.Time) (*model.MarketData, error) {
+func (s *alphaVantageScrapper) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
 	var result *model.MarketData
 	// build a list of months to download, from the lastDate to the current date
-	months := buildMonthList(lastestDate)
+	months := buildMonthList(startTime)
 	// iterate over the months and download the data
 	for _, month := range months {
-		monthlyData, err := s.downloadStockData(ticker, month)
+		monthlyData, err := s.fetchMarketData(symbol, month)
 		if err != nil {
 			return nil, err
 		}
 		if monthlyData == nil {
 			continue
 		}
-		if monthlyData.MetaData.LastRefreshed.After(lastestDate) {
-			lastestDate = monthlyData.MetaData.LastRefreshed
+		if monthlyData.MetaData.LastRefreshed.After(startTime) {
+			startTime = monthlyData.MetaData.LastRefreshed
 		}
 		if result == nil {
 			result = monthlyData
@@ -57,7 +57,7 @@ func (s *alphaVantageScrapper) DownloadStockData(ticker string, lastestDate time
 		}
 		result.TimeSeries = append(result.TimeSeries, monthlyData.TimeSeries...)
 	}
-	log.Printf("Downloaded stock data for %s\n", ticker)
+	log.Printf("Downloaded stock data for %s\n", symbol)
 	return result, nil
 }
 
@@ -75,7 +75,7 @@ func buildMonthList(lastDate time.Time) []time.Time {
 	return months
 }
 
-func (s *alphaVantageScrapper) downloadStockData(symbol string, month time.Time) (*model.MarketData, error) {
+func (s *alphaVantageScrapper) fetchMarketData(symbol string, month time.Time) (*model.MarketData, error) {
 	// format month as "YYYY-MM"
 	monthStr := month.Format("2006-01")
 	// Build the URL
@@ -98,7 +98,7 @@ func (s *alphaVantageScrapper) downloadStockData(symbol string, month time.Time)
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
-	data, err := parseStockData(body)
+	data, err := s.ParseStockData(body)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing stock data: %v", err)
 	}

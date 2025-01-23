@@ -29,7 +29,7 @@ type APIResponse struct {
 	TimeSeries map[string]map[string]string `json:"Time Series (1min)"`
 }
 
-func parseStockData(jsonData []byte) (*model.MarketData, error) {
+func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketData, error) {
 	var response APIResponse
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %v", err)
@@ -51,7 +51,7 @@ func parseStockData(jsonData []byte) (*model.MarketData, error) {
 		},
 	}
 	var err error
-	alphavantage.MetaData.LastRefreshed, err = parseTime(response.MetaData[FIELD_LAST_REFRESHED], alphavantage.MetaData.TimeZone)
+	alphavantage.MetaData.LastRefreshed, err = s.parseTime(response.MetaData[FIELD_LAST_REFRESHED], alphavantage.MetaData.TimeZone)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse last refreshed time: %v", err)
 	}
@@ -83,19 +83,19 @@ func parseStockData(jsonData []byte) (*model.MarketData, error) {
 			return nil, fmt.Errorf("failed to parse volume value: %v", err)
 		}
 
-		t, err := parseTime(timestamp, alphavantage.MetaData.TimeZone)
+		t, err := s.parseTime(timestamp, alphavantage.MetaData.TimeZone)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse timestamp: %v", err)
 		}
 
 		stockData := &model.StockData{
-			Symbol: alphavantage.MetaData.Symbol,
-			Open:   open,
-			High:   high,
-			Low:    low,
-			Close:  close,
-			Volume: volume,
-			Time:   t,
+			Symbol:   alphavantage.MetaData.Symbol,
+			Open:     open,
+			High:     high,
+			Low:      low,
+			Close:    close,
+			Volume:   volume,
+			OpenTime: t,
 		}
 		alphavantage.TimeSeries = append(alphavantage.TimeSeries, stockData)
 	}
@@ -103,7 +103,7 @@ func parseStockData(jsonData []byte) (*model.MarketData, error) {
 	return &alphavantage, nil
 }
 
-func parseTime(timestamp string, timeZone string) (time.Time, error) {
+func (s *alphaVantageScrapper) parseTime(timestamp string, timeZone string) (time.Time, error) {
 	location, err := time.LoadLocation(timeZone)
 	if err != nil {
 		fmt.Printf("Error loading timezone: %v\n", err)

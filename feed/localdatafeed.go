@@ -16,8 +16,8 @@ func NewLocalDataFeed() FeedConsumer {
 	return &localDataFeed{}
 }
 
-func (s *localDataFeed) DownloadStockData(ticker string, lastestDate time.Time) (*model.MarketData, error) {
-	fileName := fmt.Sprintf("feed/data/%s_%s.json", ticker, lastestDate.Format("2006-01"))
+func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
+	fileName := fmt.Sprintf("feed/data/%s_%s.json", symbol, startTime.Format("2006-01"))
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
 		return nil, fmt.Errorf("file %s does not exist", fileName)
 	}
@@ -31,7 +31,8 @@ func (s *localDataFeed) DownloadStockData(ticker string, lastestDate time.Time) 
 	if err != nil {
 		return nil, err
 	}
-	data, err := parseStockData(jsonData)
+	av := alphaVantageScrapper{}
+	data, err := av.ParseStockData(jsonData)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing stock data: %v", err)
 	}

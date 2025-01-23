@@ -9,8 +9,9 @@ import (
 const (
 	DataFeedProviderLocal        = "local"
 	DataFeedProviderAlphaVantage = "alphavantage"
+	DataFeedProviderMEXC         = "mexc"
 )
 
 type FeedConsumer interface {
-	DownloadStockData(ticker string, lastestDate time.Time) (*model.MarketData, error)
+	DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error)
 }

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/Ruscigno/stockscreener/feed"
+	"github.com/Ruscigno/stockscreener/feed/mexc"
 	"github.com/Ruscigno/stockscreener/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
 type StockScrapper interface {
-	DownloadStockData(ctx context.Context, client influxdb2.Client, symbol string) error
+	DownloadMarketData(ctx context.Context, client influxdb2.Client, symbol string) error
 }
 
 type stockScrapper struct {
@@ -42,43 +43,43 @@ func NewStockScrapper() StockScrapper {
 		return &stockScrapper{
 			feed: feed.NewAlphaVantageScrapper(),
 		}
+	case feed.DataFeedProviderMEXC:
+		return &stockScrapper{
+			feed: mexc.NewMexcDataFeed(),
+		}
 	default:
 		log.Fatalf("Unsupported data feed provider: %s", DATA_FEED_PROVIDER)
 		return nil
 	}
 }
 
-func (s *stockScrapper) DownloadStockData(ctx context.Context, client influxdb2.Client, ticker string) error {
+func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2.Client, symbol string) error {
 	if client == nil {
 		return fmt.Errorf("influxdb client is nil")
 	}
 	s.influx = client
-	s.lastestDate = s.getLastDate(ctx, ticker)
+	s.lastestDate = s.getLastDate(ctx, symbol)
 	lastestDate := time.Time{}
 
-	// build a list of months to download, from the lastDate to the current date
-	months := buildMonths(s.lastestDate)
-	// iterate over the months and download the data
-	for _, month := range months {
-		monthlyData, err := s.feed.DownloadStockData(ticker, month)
-		if err != nil {
-			return err
-		}
-		if monthlyData == nil {
-			continue
-		}
-		err = s.storeStockData(ctx, monthlyData)
-		if err != nil {
-			log.Printf("Error storing stock data: %v\n", err)
-		}
-		if monthlyData.MetaData.LastRefreshed.After(lastestDate) {
-			lastestDate = monthlyData.MetaData.LastRefreshed
-		}
+	data, err := s.feed.DownloadMarketData(symbol, s.lastestDate, nil)
+	if err != nil {
+		return err
+	}
+	if data != nil && data.MetaData == nil && data.TimeSeries == nil {
+		log.Printf("No data for %s\n", symbol)
+		return nil
+	}
+	err = s.storeStockData(ctx, data)
+	if err != nil {
+		log.Printf("Error storing stock data: %v\n", err)
+	}
+	if data.MetaData.LastRefreshed.After(lastestDate) {
+		lastestDate = data.MetaData.LastRefreshed
 	}
 	if !lastestDate.IsZero() {
 		s.lastestDate = lastestDate
 	}
-	log.Printf("Downloaded stock data for %s, latest date:%s\n", ticker, s.lastestDate.Format("2006-01-02"))
+	log.Printf("Downloaded stock data for %s, latest date:%s\n", symbol, s.lastestDate.Format("2006-01-02"))
 	return nil
 }
 
@@ -132,7 +133,7 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketData) error {
 	writeAPI := s.influx.WriteAPIBlocking(INFLUX_ORG, INFLUX_BUCKET)
 	for _, stockData := range data.TimeSeries {
-		if stockData.Time.Before(s.lastestDate) {
+		if stockData.OpenTime.Before(s.lastestDate) {
 			continue
 		}
 		p := influxdb2.NewPointWithMeasurement("stock_data").
@@ -142,8 +143,11 @@ func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketDa
 			AddField("low", stockData.Low).
 			AddField("close", stockData.Close).
 			AddField("volume", stockData.Volume).
+			AddField("open_time", stockData.OpenTime).
+			AddField("close_time", stockData.CloseTime).
+			AddField("quote_volume", stockData.QuoteVol).
 			AddField("time_zone", data.MetaData.TimeZone).
-			SetTime(stockData.Time)
+			SetTime(stockData.OpenTime)
 		err := writeAPI.WritePoint(context.Background(), p)
 		if err != nil {
 			return fmt.Errorf("influx error, writing point: %v", err)
