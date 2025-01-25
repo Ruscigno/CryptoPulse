@@ -42,15 +42,19 @@ func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol 
 	clock := time.NewTicker(timeFrame)
 	defer clock.Stop()
 
+	download := func() {
+		ctx := context.Background()
+		err := s.scraper.DownloadMarketData(ctx, client, symbol)
+		if err != nil {
+			fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, symbol, err)
+		}
+		fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, symbol)
+	}
+	download()
 	for {
 		select {
 		case <-clock.C:
-			ctx := context.Background()
-			err := s.scraper.DownloadMarketData(ctx, client, symbol)
-			if err != nil {
-				fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, symbol, err)
-			}
-			fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, symbol)
+			download()
 		case <-done:
 			fmt.Printf("Worker %d: Exiting\n", id)
 			return
@@ -79,7 +83,6 @@ func (s *Server) Start() {
 			s.worker(client, id, done, symbol, time.Duration(1)*time.Minute)
 		}(i)
 	}
-
 	// Handle signals
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)

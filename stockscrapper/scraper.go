@@ -77,7 +77,7 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 		log.Printf("No data for %s\n", symbol)
 		return nil
 	}
-	if len(data.TimeSeries) == 0 {
+	if data == nil || len(data.TimeSeries) == 0 {
 		return nil
 	}
 

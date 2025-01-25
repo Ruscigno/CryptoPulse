@@ -14,6 +14,7 @@ import (
 )
 
 type mexcDataFeed struct {
+	client *http.Client
 }
 
 type timeRequestList struct {
@@ -46,7 +47,17 @@ func NewMexcDataFeed() feed.FeedConsumer {
 	if MexcSecretKey == "" {
 		log.Fatal("Mexc Secret key is missing. Please set the 'MEXC_SECRET_KEY' variable.")
 	}
-	return &mexcDataFeed{}
+	return &mexcDataFeed{
+		client: &http.Client{
+			Timeout: time.Duration(Timeout) * time.Second * 5,
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				MaxIdleConnsPerHost: 2,
+				DisableKeepAlives:   true,
+				IdleConnTimeout:     30 * time.Second,
+			},
+		},
+	}
 }
 
 func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
@@ -113,9 +124,10 @@ func buildRequestTimeList(startTime time.Time, endTime time.Time) []*timeRequest
 }
 
 func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTime time.Time) (*model.MarketData, error) {
-	client := &http.Client{}
+	defer s.client.CloseIdleConnections()
+
 	url := fmt.Sprintf(FetchMarketDataURL, BaseURL, symbol, interval, startTime.UnixMilli(), endTime.UnixMilli(), limit)
-	resp, err := client.Get(url)
+	resp, err := s.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
