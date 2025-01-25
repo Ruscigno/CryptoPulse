@@ -24,8 +24,7 @@ var (
 )
 
 type Server struct {
-	scraper  StockScrapper
-	timeZone string
+	scraper StockScrapper
 }
 
 func NewServer() *Server {
@@ -40,9 +39,6 @@ func (s *Server) getServerInfo() {
 }
 
 func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol string, timeFrame time.Duration) {
-	if 1 != 2 {
-		timeFrame = time.Duration(10) * time.Second
-	}
 	clock := time.NewTicker(timeFrame)
 	defer clock.Stop()
 

@@ -104,3 +104,7 @@ func (s *alphaVantageScrapper) fetchMarketData(symbol string, month time.Time) (
 	}
 	return data, nil
 }
+
+func (s *alphaVantageScrapper) GetServerTimeZone() (string, error) {
+	return "UTC", nil
+}

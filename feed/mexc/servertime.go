@@ -117,6 +117,7 @@ func (s *mexcDataFeed) GetServerTimeZone() (string, error) {
 
 	// Set the global timezone
 	time.Local = loc
+	tz = timezone
 	return timezone, nil
 }
 

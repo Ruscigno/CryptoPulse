@@ -38,3 +38,7 @@ func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, e
 	}
 	return data, nil
 }
+
+func (s *localDataFeed) GetServerTimeZone() (string, error) {
+	return "UTC", nil
+}

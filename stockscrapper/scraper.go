@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Ruscigno/stockscreener/feed"
@@ -22,10 +23,6 @@ type stockScrapper struct {
 	influx      influxdb2.Client
 	feed        feed.FeedConsumer
 }
-
-const (
-	DEFAULT_TIME_ZONE = "US/Eastern"
-)
 
 var (
 	INFLUX_ORG         string = os.Getenv("INFLUX_ORG")
@@ -57,9 +54,20 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 	if client == nil {
 		return fmt.Errorf("influxdb client is nil")
 	}
-	s.influx = client
+	_, err := s.feed.GetServerTimeZone()
+	if err != nil {
+		log.Fatalf("error getting server timezone: %v\n", err)
+	}
+	var lastestDate time.Time
+	mu := &sync.Mutex{}
+
+	if s.influx == nil {
+		mu.Lock()
+		s.influx = client
+		mu.Unlock()
+	}
 	s.lastestDate = s.getLastDate(ctx, symbol)
-	lastestDate := time.Time{}
+	lastestDate = s.lastestDate
 
 	data, err := s.feed.DownloadMarketData(symbol, s.lastestDate, nil)
 	if err != nil {
@@ -69,6 +77,10 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 		log.Printf("No data for %s\n", symbol)
 		return nil
 	}
+	if len(data.TimeSeries) == 0 {
+		return nil
+	}
+
 	err = s.storeStockData(ctx, data)
 	if err != nil {
 		log.Printf("Error storing stock data: %v\n", err)
@@ -77,30 +89,21 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 		lastestDate = data.MetaData.LastRefreshed
 	}
 	if !lastestDate.IsZero() {
+		mu.Lock()
 		s.lastestDate = lastestDate
+		mu.Unlock()
 	}
-	log.Printf("Downloaded stock data for %s, latest date:%s\n", symbol, s.lastestDate.Format("2006-01-02"))
 	return nil
-}
-
-func buildMonths(lastDate time.Time) []time.Time {
-	// get the current date
-	currentDate := time.Now().UTC()
-
-	// build a list of months to download, from the lastDate to the current date
-	months := []time.Time{}
-	for currentDate.After(lastDate) {
-		months = append(months, currentDate)
-		currentDate = currentDate.AddDate(0, -1, 0)
-	}
-
-	return months
 }
 
 func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Time {
 	if !s.lastestDate.IsZero() {
 		return s.lastestDate
 	}
+	mu := &sync.Mutex{}
+	mu.Lock()
+	defer mu.Unlock()
+
 	// query influxdb for the last date
 	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUX_BUCKET, symbol)
 	result, err := s.influx.QueryAPI(INFLUX_ORG).Query(ctx, query)
@@ -109,7 +112,6 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 		return time.Time{}
 	}
 	defer result.Close()
-	timeZone := DEFAULT_TIME_ZONE
 	for result.Next() {
 		record := result.Record()
 		if record == nil {
@@ -118,24 +120,19 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 		if s.lastestDate.Before(record.Time()) {
 			s.lastestDate = record.Time()
 		}
-		if record.Field() == "time_zone" {
-			timeZone = record.Value().(string)
-			break
-		}
 	}
 	if s.lastestDate.IsZero() {
 		s.lastestDate = time.Now().AddDate(0, 0, -365)
 	}
-	s.lastestDate = s.lastestDate.In(time.FixedZone(timeZone, 0))
-	return s.lastestDate
+	return s.lastestDate.Add(-time.Hour * 24)
 }
 
 func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketData) error {
+	if data == nil || data.TimeSeries == nil {
+		return nil
+	}
 	writeAPI := s.influx.WriteAPIBlocking(INFLUX_ORG, INFLUX_BUCKET)
 	for _, stockData := range data.TimeSeries {
-		if stockData.OpenTime.Before(s.lastestDate) {
-			continue
-		}
 		p := influxdb2.NewPointWithMeasurement("stock_data").
 			AddTag("symbol", stockData.Symbol).
 			AddField("open", stockData.Open).

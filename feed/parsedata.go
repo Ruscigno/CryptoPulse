@@ -78,7 +78,7 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 			return nil, fmt.Errorf("failed to parse close value: %v", err)
 		}
 
-		volume, err := strconv.ParseInt(data[FIELD_VOLUME], 10, 64)
+		volume, err := strconv.ParseFloat(data[FIELD_VOLUME], 64)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse volume value: %v", err)
 		}

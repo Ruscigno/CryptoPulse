@@ -16,6 +16,11 @@ import (
 type mexcDataFeed struct {
 }
 
+type timeRequestList struct {
+	startTime time.Time
+	endTime   time.Time
+}
+
 const (
 	MexcFunction           = "TIME_SERIES_INTRADAY"
 	interval               = "1m"
@@ -49,78 +54,79 @@ func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, en
 		now := time.Now()
 		endTime = &now
 	}
-	tz, err := s.GetServerTimeZone()
-	if err != nil {
-		log.Printf("error getting server timezone: %v\n", err)
-		return nil, err
-	}
 	result := &model.MarketData{
 		MetaData: &model.MetaData{
 			Symbol:        symbol,
-			LastRefreshed: *endTime,
+			LastRefreshed: time.Time{},
 			Interval:      interval,
 			TimeZone:      tz,
 		},
 	}
 	// build a list of months to download, from the lastDate to the current date
 	requestsTimeList := buildRequestTimeList(startTime, *endTime)
-	result.TimeSeries = make([]*model.StockData, len(requestsTimeList))
+	maxDate := time.Time{}
 	// iterate over the months and download the data
 	for _, rt := range requestsTimeList {
-		monthlyData, err := s.fetchMarketData(symbol, rt, *endTime)
-		if err != nil || monthlyData == nil {
+		periodData, err := s.fetchMarketData(symbol, rt.startTime, rt.endTime)
+		if err != nil || periodData == nil {
 			continue
 		}
-		if monthlyData.MetaData.LastRefreshed.After(*endTime) {
-			endTime = &monthlyData.MetaData.LastRefreshed
+		if rt.endTime.After(maxDate) {
+			maxDate = rt.endTime
 		}
-		if result == nil {
-			result = monthlyData
-			continue
-		}
-		result.TimeSeries = append(result.TimeSeries, monthlyData.TimeSeries...)
+		result.TimeSeries = append(result.TimeSeries, periodData.TimeSeries...)
+		log.Printf("Downloaded market data for %s, from %s to %s\n", symbol, rt.startTime.Format(time.RFC3339), rt.endTime.Format(time.RFC3339))
 	}
-	if result == nil {
+	if !maxDate.IsZero() {
+		result.MetaData.LastRefreshed = maxDate
+		endTime = &maxDate
+	}
+	if len(result.TimeSeries) == 0 {
+		endTime = &startTime
 		log.Printf("No data for %s\n", symbol)
 		return nil, nil
 	}
-	log.Printf("Downloaded market data for %s\n", symbol)
+	log.Printf("Download market data finished for %s\n", symbol)
 	return result, nil
 }
 
 // buildRequestList build a list of requests for every 500 minutes using the start and end time as interval
-func buildRequestTimeList(startTime time.Time, endTime time.Time) []time.Time {
+func buildRequestTimeList(startTime time.Time, endTime time.Time) []*timeRequestList {
 	if fetchBytimeLimit >= limit {
 		log.Fatalf("fetchBytimeLimit [%d] should be less than limit [%d]", fetchBytimeLimit, limit)
 	}
-	var requests []time.Time
-	for t := endTime; t.After(startTime.Add(-time.Minute * time.Duration(fetchBytimeLimit))); t = t.Add(-time.Minute * time.Duration(fetchBytimeLimit)) {
-		requests = append(requests, t.Add(-time.Minute*time.Duration(fetchBytimeLimit)))
+	var requests []*timeRequestList
+	// truncate endTime to the minute
+	endTime = endTime.Truncate(time.Minute)
+	for startTime.Before(endTime) {
+		st := endTime.Add(-time.Minute * time.Duration(fetchBytimeLimit))
+		if st.Before(startTime) {
+			st = startTime
+		}
+		requests = append(requests, &timeRequestList{
+			startTime: st,
+			endTime:   endTime,
+		})
+		endTime = st
 	}
 	return requests
 }
 
 func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTime time.Time) (*model.MarketData, error) {
-	method := "GET"
-
 	client := &http.Client{}
 	url := fmt.Sprintf(FetchMarketDataURL, BaseURL, symbol, interval, startTime.UnixMilli(), endTime.UnixMilli(), limit)
-	res, err := http.NewRequest(method, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(res)
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("non-200 response: %s", resp.Status)
 	}
-	if res.Body == nil {
+	if resp.Body == nil {
 		log.Printf("empty response body, url, startTime, endTime: %s, %s\n", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 		return nil, fmt.Errorf("empty response body")
 	}
-	defer res.Body.Close()
+	defer resp.Body.Close()
 
 	// save the body as csv
 	body, err := io.ReadAll(resp.Body)
@@ -255,7 +261,7 @@ func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model
 			High:      high,
 			Low:       low,
 			Close:     closeP,
-			Volume:    int64(vol),
+			Volume:    vol,
 			QuoteVol:  qVol,
 			OpenTime:  openTime,
 			CloseTime: closeTime,
