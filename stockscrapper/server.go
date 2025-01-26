@@ -12,6 +12,7 @@ import (
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"go.uber.org/zap"
 )
 
 const (
@@ -48,7 +49,7 @@ func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol 
 		if err != nil {
 			fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, symbol, err)
 		}
-		fmt.Printf("Worker %d: Downloaded stock data for %s\n", id, symbol)
+		zap.L().Info("Downloaded stock data", zap.String("symbol", symbol))
 	}
 	download()
 	for {
@@ -89,14 +90,14 @@ func (s *Server) Start() {
 
 	// Wait for a signal
 	<-sigchan
-	fmt.Println("Received termination signal. Shutting down...")
+	zap.L().Info("Received termination signal. Shutting down...")
 
 	// Signal workers to stop
 	close(done)
 
 	// Wait for workers to finish
 	wg.Wait()
-	fmt.Println("All workers exited. Exiting main.")
+	zap.L().Info("All workers exited. Exiting main.")
 }
 
 // readStockList reads a list of stock symbols from a file.

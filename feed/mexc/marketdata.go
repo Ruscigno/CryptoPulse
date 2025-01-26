@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Ruscigno/stockscreener/feed"
 	"github.com/Ruscigno/stockscreener/model"
+	"go.uber.org/zap"
 )
 
 type mexcDataFeed struct {
@@ -42,10 +42,10 @@ var (
 
 func NewMexcDataFeed() feed.FeedConsumer {
 	if MexcApiKey == "" {
-		log.Fatal("Mexc API key is missing. Please set the 'MEXC_API_KEY' variable.")
+		zap.L().Fatal("Mexc API key is missing. Please set the 'MEXC_API_KEY' variable")
 	}
 	if MexcSecretKey == "" {
-		log.Fatal("Mexc Secret key is missing. Please set the 'MEXC_SECRET_KEY' variable.")
+		zap.L().Fatal("Mexc Secret key is missing. Please set the 'MEXC_SECRET_KEY' variable")
 	}
 	return &mexcDataFeed{
 		client: &http.Client{
@@ -86,7 +86,7 @@ func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, en
 			maxDate = rt.endTime
 		}
 		result.TimeSeries = append(result.TimeSeries, periodData.TimeSeries...)
-		log.Printf("Downloaded market data for %s, from %s to %s\n", symbol, rt.startTime.Format(time.RFC3339), rt.endTime.Format(time.RFC3339))
+		zap.L().Info("Downloaded market data", zap.String("symbol", symbol), zap.String("from", rt.startTime.Format(time.RFC3339)), zap.String("to", rt.endTime.Format(time.RFC3339)))
 	}
 	if !maxDate.IsZero() {
 		result.MetaData.LastRefreshed = maxDate
@@ -94,17 +94,17 @@ func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, en
 	}
 	if len(result.TimeSeries) == 0 {
 		endTime = &startTime
-		log.Printf("No data for %s\n", symbol)
+		zap.L().Info("No data for symbol", zap.String("symbol", symbol))
 		return nil, nil
 	}
-	log.Printf("Download market data finished for %s\n", symbol)
+	zap.L().Info("Downloaded market data", zap.String("symbol", symbol))
 	return result, nil
 }
 
 // buildRequestList build a list of requests for every 500 minutes using the start and end time as interval
 func buildRequestTimeList(startTime time.Time, endTime time.Time) []*timeRequestList {
 	if fetchBytimeLimit >= limit {
-		log.Fatalf("fetchBytimeLimit [%d] should be less than limit [%d]", fetchBytimeLimit, limit)
+		zap.L().Fatal("fetchBytimeLimit should be less than limit", zap.Int("fetchBytimeLimit", fetchBytimeLimit), zap.Int("limit", limit))
 	}
 	var requests []*timeRequestList
 	// truncate endTime to the minute
@@ -135,7 +135,7 @@ func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTi
 		return nil, fmt.Errorf("non-200 response: %s", resp.Status)
 	}
 	if resp.Body == nil {
-		log.Printf("empty response body, url, startTime, endTime: %s, %s\n", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+		zap.L().Info("empty response body", zap.String("url", url), zap.String("startTime", startTime.Format(time.RFC3339)), zap.String("endTime", endTime.Format(time.RFC3339)))
 		return nil, fmt.Errorf("empty response body")
 	}
 	defer resp.Body.Close()
@@ -172,56 +172,56 @@ func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model
 	// Iterate over each entry in rawData
 	for idx, entry := range rawData {
 		if len(entry) < 8 {
-			log.Printf("Skipping entry %d: insufficient data", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "insufficient data"))
 			continue
 		}
 
 		// Extract and assert each field
 		openTimeMs, ok := entry[0].(float64)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid open_time", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid open_time"))
 			continue
 		}
 
 		openPrice, ok := entry[1].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid open price", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid open_price"))
 			continue
 		}
 
 		highPrice, ok := entry[2].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid high price", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid high_price"))
 			continue
 		}
 
 		lowPrice, ok := entry[3].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid low price", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid low_price"))
 			continue
 		}
 
 		closePrice, ok := entry[4].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid close price", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid close_price"))
 			continue
 		}
 
 		volume, ok := entry[5].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid volume", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid volume"))
 			continue
 		}
 
 		closeTimeMs, ok := entry[6].(float64)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid close_time", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid close_time"))
 			continue
 		}
 
 		quoteVolume, ok := entry[7].(string)
 		if !ok {
-			log.Printf("Skipping entry %d: invalid quote_volume", idx)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", "invalid quote_volume"))
 			continue
 		}
 
@@ -232,37 +232,37 @@ func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model
 		// Convert string prices and volumes to float64
 		open, err := parseStringToFloat(openPrice)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 
 		high, err := parseStringToFloat(highPrice)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 
 		low, err := parseStringToFloat(lowPrice)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 
 		closeP, err := parseStringToFloat(closePrice)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 
 		vol, err := parseStringToFloat(volume)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 
 		qVol, err := parseStringToFloat(quoteVolume)
 		if err != nil {
-			log.Printf("Skipping entry %d: %v", idx, err)
+			zap.L().Info("Skipping entry", zap.Int("index", idx), zap.String("reason", err.Error()))
 			continue
 		}
 

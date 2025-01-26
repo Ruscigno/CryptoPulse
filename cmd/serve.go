@@ -22,7 +22,7 @@ func init() {
 
 	// Here you will define your flags and configuration settings.
 	viper.SetDefault("port", "3000")
-	viper.SetDefault("log_level", "debug")
+	viper.SetDefault("LOG_LEVEL", "debug")
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:

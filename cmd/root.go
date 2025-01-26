@@ -1,14 +1,16 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
-var cfgFile string
+var (
+	log     *logrus.Logger
+	cfgFile string
+)
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -24,8 +26,7 @@ var RootCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		zap.L().Fatal("Error executing command", zap.Error(err))
 	}
 }
 
@@ -59,6 +60,6 @@ func initConfig() {
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+		zap.L().Info("Using config file:", zap.String("config", viper.ConfigFileUsed()))
 	}
 }

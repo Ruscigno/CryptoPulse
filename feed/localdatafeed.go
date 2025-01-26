@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Ruscigno/stockscreener/model"
+	"go.uber.org/zap"
 )
 
 type localDataFeed struct {
@@ -19,6 +20,7 @@ func NewLocalDataFeed() FeedConsumer {
 func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
 	fileName := fmt.Sprintf("feed/data/%s_%s.json", symbol, startTime.Format("2006-01"))
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		zap.L().Error("file does not exist", zap.String("file", fileName))
 		return nil, fmt.Errorf("file %s does not exist", fileName)
 	}
 	file, err := os.Open(fileName)
@@ -34,6 +36,7 @@ func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, e
 	av := alphaVantageScrapper{}
 	data, err := av.ParseStockData(jsonData)
 	if err != nil {
+		zap.L().Error("error parsing stock data", zap.Error(err))
 		return nil, fmt.Errorf("error parsing stock data: %v", err)
 	}
 	return data, nil

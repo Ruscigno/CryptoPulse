@@ -3,12 +3,12 @@ package feed
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Ruscigno/stockscreener/model"
+	"go.uber.org/zap"
 )
 
 type alphaVantageScrapper struct {
@@ -30,7 +30,7 @@ var (
 
 func NewAlphaVantageScrapper() FeedConsumer {
 	if apiKey == "" {
-		log.Fatal("Alpha Vantage API key is missing. Please set the 'apiKey' variable.")
+		zap.L().Fatal("Alpha Vantage API key is missing. Please set the 'apiKey' variable")
 	}
 	return &alphaVantageScrapper{}
 }
@@ -57,7 +57,7 @@ func (s *alphaVantageScrapper) DownloadMarketData(symbol string, startTime time.
 		}
 		result.TimeSeries = append(result.TimeSeries, monthlyData.TimeSeries...)
 	}
-	log.Printf("Downloaded stock data for %s\n", symbol)
+	zap.L().Info("Downloaded stock data", zap.String("symbol", symbol))
 	return result, nil
 }
 
@@ -85,21 +85,25 @@ func (s *alphaVantageScrapper) fetchMarketData(symbol string, month time.Time) (
 	// Perform the HTTP request
 	resp, err := http.Get(queryURL)
 	if err != nil {
+		zap.L().Error("HTTP request failed", zap.Error(err))
 		return nil, fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		zap.L().Error("Non-200 response", zap.String("status", resp.Status))
 		return nil, fmt.Errorf("non-200 response: %s", resp.Status)
 	}
 
 	// save the body as csv
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		zap.L().Error("Failed to read response body", zap.Error(err))
 		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 	data, err := s.ParseStockData(body)
 	if err != nil {
+		zap.L().Error("Error parsing stock data", zap.Error(err))
 		return nil, fmt.Errorf("error parsing stock data: %v", err)
 	}
 	return data, nil

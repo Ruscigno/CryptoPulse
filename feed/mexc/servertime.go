@@ -3,11 +3,15 @@ package mexc
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
 	"net/http"
 	"time"
+
+	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
+
+var log *logrus.Logger
 
 // MexcConfig holds configuration for the MEXC API.
 type MexcConfig struct {
@@ -40,7 +44,7 @@ func (s *mexcDataFeed) fetchServerTime() (int64, error) {
 		client := &http.Client{}
 		resp, err := client.Get(url)
 		if err != nil {
-			log.Printf("Attempt %d: Failed to fetch server time: %v", attempt, err)
+			zap.L().Warn("Failed to fetch server time", zap.Error(err), zap.Int("attempt", attempt))
 			lastErr = err
 			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff
 			continue
@@ -49,16 +53,16 @@ func (s *mexcDataFeed) fetchServerTime() (int64, error) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			bodyBytes, _ := ioutil.ReadAll(resp.Body)
-			log.Printf("Attempt %d: Non-200 status code: %d, Body: %s", attempt, resp.StatusCode, string(bodyBytes))
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			zap.L().Info("Non-200 status code", zap.Int("attempt", attempt), zap.Int("status", resp.StatusCode), zap.String("body", string(bodyBytes)))
 			lastErr = fmt.Errorf("non-200 status code: %d", resp.StatusCode)
 			time.Sleep(time.Duration(attempt) * time.Second)
 			continue
 		}
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Printf("Attempt %d: Failed to read response body: %v", attempt, err)
+			zap.L().Info("Failed to read response body", zap.Int("attempt", attempt), zap.Error(err))
 			lastErr = err
 			time.Sleep(time.Duration(attempt) * time.Second)
 			continue
@@ -66,7 +70,7 @@ func (s *mexcDataFeed) fetchServerTime() (int64, error) {
 
 		var timeResp TimeResponse
 		if err := json.Unmarshal(body, &timeResp); err != nil {
-			log.Printf("Attempt %d: Failed to unmarshal JSON: %v", attempt, err)
+			zap.L().Info("Failed to unmarshal JSON", zap.Int("attempt", attempt), zap.Error(err))
 			lastErr = err
 			time.Sleep(time.Duration(attempt) * time.Second)
 			continue
@@ -112,7 +116,7 @@ func (s *mexcDataFeed) GetServerTimeZone() (string, error) {
 	// set the timezone as the global timezone
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		log.Fatalf("Failed to load location: %v", err)
+		zap.L().Fatal("Failed to load location", zap.Error(err))
 	}
 
 	// Set the global timezone

@@ -1,5 +1,19 @@
 {
     "stock": [
-        "BTCUSDT"
+        "BTCUSDT",
+        "ETHUSDT",
+        "AAVEUSDT",
+        "ADAUSDT",
+        "DOGEUSDT",
+        "FETUSDT",
+        "NEARUSDT",
+        "PENDLEUSDT",
+        "RENDERUSDT",
+        "SOLUSDT",
+        "SEIUSDT",
+        "SUISUSDT",
+        "TAOUSDT",
+        "XRPUSDT",
+        "ZEROUSDT"
     ]
 }

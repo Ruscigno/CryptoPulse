@@ -7,7 +7,11 @@ import (
 	"time"
 
 	"github.com/Ruscigno/stockscreener/model"
+	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
+
+var log *logrus.Logger
 
 const (
 	FIELD_INFORMATION    = "1. Information"
@@ -32,7 +36,8 @@ type APIResponse struct {
 func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketData, error) {
 	var response APIResponse
 	if err := json.Unmarshal(jsonData, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %v", err)
+		zap.L().Error("failed to unmarshal JSON", zap.Error(err))
+		return nil, fmt.Errorf("failed to unmarshal JSON: %v", err)
 	}
 	if response.MetaData == nil {
 		return nil, nil
@@ -53,6 +58,7 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 	var err error
 	alphavantage.MetaData.LastRefreshed, err = s.parseTime(response.MetaData[FIELD_LAST_REFRESHED], alphavantage.MetaData.TimeZone)
 	if err != nil {
+		zap.L().Error("failed to parse last refreshed time", zap.Error(err))
 		return nil, fmt.Errorf("failed to parse last refreshed time: %v", err)
 	}
 
@@ -60,31 +66,37 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 	for timestamp, data := range response.TimeSeries {
 		open, err := strconv.ParseFloat(data[FIELD_OPEN], 64)
 		if err != nil {
+			zap.L().Error("failed to parse open value", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse open value: %v", err)
 		}
 
 		high, err := strconv.ParseFloat(data[FIELD_HIGH], 64)
 		if err != nil {
+			zap.L().Error("failed to parse high value", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse high value: %v", err)
 		}
 
 		low, err := strconv.ParseFloat(data[FIELD_LOW], 64)
 		if err != nil {
+			zap.L().Error("failed to parse low value", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse low value: %v", err)
 		}
 
 		close, err := strconv.ParseFloat(data[FIELD_CLOSE], 64)
 		if err != nil {
+			zap.L().Error("failed to parse close value", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse close value: %v", err)
 		}
 
 		volume, err := strconv.ParseFloat(data[FIELD_VOLUME], 64)
 		if err != nil {
+			zap.L().Error("failed to parse volume value", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse volume value: %v", err)
 		}
 
 		t, err := s.parseTime(timestamp, alphavantage.MetaData.TimeZone)
 		if err != nil {
+			zap.L().Error("failed to parse timestamp", zap.Error(err))
 			return nil, fmt.Errorf("failed to parse timestamp: %v", err)
 		}
 
@@ -106,14 +118,14 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 func (s *alphaVantageScrapper) parseTime(timestamp string, timeZone string) (time.Time, error) {
 	location, err := time.LoadLocation(timeZone)
 	if err != nil {
-		fmt.Printf("Error loading timezone: %v\n", err)
+		zap.L().Error("failed to load timezone", zap.Error(err))
 		return time.Time{}, err
 	}
 
 	// Parse the time string in the specified timezone
 	parsedTime, err := time.ParseInLocation(TIME_LAYOUT, timestamp, location)
 	if err != nil {
-		fmt.Printf("Error parsing time: %v\n", err)
+		zap.L().Error("failed to parse time", zap.Error(err))
 		return time.Time{}, err
 	}
 	return parsedTime, nil

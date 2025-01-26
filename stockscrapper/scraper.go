@@ -3,7 +3,6 @@ package stockscrapper
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -12,7 +11,11 @@ import (
 	"github.com/Ruscigno/stockscreener/feed/mexc"
 	"github.com/Ruscigno/stockscreener/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
+
+var log *logrus.Logger
 
 type StockScrapper interface {
 	DownloadMarketData(ctx context.Context, client influxdb2.Client, symbol string) error
@@ -45,7 +48,7 @@ func NewStockScrapper() StockScrapper {
 			feed: mexc.NewMexcDataFeed(),
 		}
 	default:
-		log.Fatalf("Unsupported data feed provider: %s", DATA_FEED_PROVIDER)
+		zap.L().Fatal("Unsupported data feed provider", zap.String("provider", DATA_FEED_PROVIDER))
 		return nil
 	}
 }
@@ -56,7 +59,7 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 	}
 	_, err := s.feed.GetServerTimeZone()
 	if err != nil {
-		log.Fatalf("error getting server timezone: %v\n", err)
+		zap.L().Fatal("error getting server timezone", zap.Error(err))
 	}
 	var lastestDate time.Time
 	mu := &sync.Mutex{}
@@ -74,7 +77,7 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 		return err
 	}
 	if data != nil && data.MetaData == nil && data.TimeSeries == nil {
-		log.Printf("No data for %s\n", symbol)
+		zap.L().Info("No data for symbol", zap.String("symbol", symbol))
 		return nil
 	}
 	if data == nil || len(data.TimeSeries) == 0 {
@@ -83,7 +86,7 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 
 	err = s.storeStockData(ctx, data)
 	if err != nil {
-		log.Printf("Error storing stock data: %v\n", err)
+		zap.L().Error("Error storing stock data", zap.Error(err))
 	}
 	if data.MetaData.LastRefreshed.After(lastestDate) {
 		lastestDate = data.MetaData.LastRefreshed
@@ -108,7 +111,7 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUX_BUCKET, symbol)
 	result, err := s.influx.QueryAPI(INFLUX_ORG).Query(ctx, query)
 	if err != nil {
-		log.Printf("Error querying influxdb: %v\n", err)
+		zap.L().Error("Error querying influxdb", zap.Error(err))
 		return time.Time{}
 	}
 	defer result.Close()
