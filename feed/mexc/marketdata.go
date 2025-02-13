@@ -94,10 +94,9 @@ func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, en
 	}
 	if len(result.TimeSeries) == 0 {
 		endTime = &startTime
-		zap.L().Info("No data for symbol", zap.String("symbol", symbol))
+		zap.L().Warn("No data for symbol", zap.String("symbol", symbol))
 		return nil, nil
 	}
-	zap.L().Info("Downloaded market data", zap.String("symbol", symbol))
 	return result, nil
 }
 

@@ -3,7 +3,6 @@ package stockscrapper
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -40,24 +39,26 @@ func (s *Server) getServerInfo() {
 }
 
 func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol string, timeFrame time.Duration) {
-	clock := time.NewTicker(timeFrame)
-	defer clock.Stop()
-
 	download := func() {
 		ctx := context.Background()
 		err := s.scraper.DownloadMarketData(ctx, client, symbol)
 		if err != nil {
-			fmt.Printf("Worker %d: Error downloading stock data for %s: %v\n", id, symbol, err)
+			zap.L().Info("Error downloading stock data", zap.Error(err), zap.String("symbol", symbol), zap.Int("worker", id))
 		}
-		zap.L().Info("Downloaded stock data", zap.String("symbol", symbol))
 	}
 	download()
+	// time before the 1st second of the next minute
+	tempClock := time.NewTicker(time.Until(time.Now().Truncate(time.Minute).Add(time.Minute).Add(1 * time.Second)))
+	<-tempClock.C
+	tempClock.Stop()
+	clock := time.NewTicker(timeFrame)
+	defer clock.Stop()
 	for {
 		select {
 		case <-clock.C:
 			download()
 		case <-done:
-			fmt.Printf("Worker %d: Exiting\n", id)
+			zap.L().Info("Worker %d: Exiting", zap.Int("worker", id))
 			return
 		}
 	}
@@ -66,7 +67,7 @@ func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol 
 func (s *Server) Start() {
 	stockList, err := readStockList(stockListFile)
 	if err != nil {
-		fmt.Printf("Error reading stock list: %v\n", err)
+		zap.L().Error("Error reading stock list", zap.Error(err))
 		return
 	}
 

@@ -77,7 +77,7 @@ func (s *stockScrapper) DownloadMarketData(ctx context.Context, client influxdb2
 		return err
 	}
 	if data != nil && data.MetaData == nil && data.TimeSeries == nil {
-		zap.L().Info("No data for symbol", zap.String("symbol", symbol))
+		zap.L().Warn("No data for symbol", zap.String("symbol", symbol))
 		return nil
 	}
 	if data == nil || len(data.TimeSeries) == 0 {
@@ -111,7 +111,7 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUX_BUCKET, symbol)
 	result, err := s.influx.QueryAPI(INFLUX_ORG).Query(ctx, query)
 	if err != nil {
-		zap.L().Error("Error querying influxdb", zap.Error(err))
+		zap.L().Fatal("Error querying influxdb", zap.Error(err))
 		return time.Time{}
 	}
 	defer result.Close()
