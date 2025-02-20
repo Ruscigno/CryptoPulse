@@ -7,11 +7,8 @@ import (
 	"time"
 
 	"github.com/Ruscigno/stockscreener/model"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
-
-var log *logrus.Logger
 
 const (
 	FIELD_INFORMATION    = "1. Information"

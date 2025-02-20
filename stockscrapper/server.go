@@ -3,9 +3,11 @@ package stockscrapper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -14,13 +16,11 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	stockListFile = "stocklist.json"
-)
-
 var (
-	INFLUXDB_TOKEN string = os.Getenv("INFLUXDB_TOKEN")
-	INFLUX_URL     string = os.Getenv("INFLUX_URL")
+	INFLUXDB_TOKEN    string = os.Getenv("INFLUXDB_TOKEN")
+	INFLUXDB_URL      string = os.Getenv("INFLUXDB_URL")
+	INFLUXDB_USER     string = os.Getenv("INFLUXDB_USER")
+	INFLUXDB_PASSWORD string = os.Getenv("INFLUXDB_PASSWORD")
 )
 
 type Server struct {
@@ -65,13 +65,16 @@ func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol 
 }
 
 func (s *Server) Start() {
-	stockList, err := readStockList(stockListFile)
+	stockList, err := readStockList(os.Getenv("STOCK_LIST_FILE"))
 	if err != nil {
 		zap.L().Error("Error reading stock list", zap.Error(err))
 		return
 	}
 
-	client := influxdb2.NewClient(INFLUX_URL, INFLUXDB_TOKEN)
+	client := s.connectToInfluxDB()
+	if client == nil {
+		return
+	}
 	defer client.Close()
 
 	var wg sync.WaitGroup
@@ -99,6 +102,35 @@ func (s *Server) Start() {
 	// Wait for workers to finish
 	wg.Wait()
 	zap.L().Info("All workers exited. Exiting main.")
+}
+
+func (*Server) connectToInfluxDB() influxdb2.Client {
+	ctx := context.Background()
+	client := influxdb2.NewClientWithOptions(INFLUXDB_URL, INFLUXDB_TOKEN, influxdb2.DefaultOptions())
+	// Check if InfluxDB is newly installed by querying for existing databases
+	query := fmt.Sprintf(`buckets() |> filter(fn: (r) => r.name == "%s")`, INFLUXDB_BUCKET)
+	_, err := client.QueryAPI(INFLUXDB_ORG).Query(ctx, query)
+	if err == nil {
+		return client
+	}
+	if !strings.Contains(err.Error(), "unauthorized") {
+		zap.L().Error("Error querying InfluxDB", zap.Error(err))
+		return nil
+	}
+	d, err := client.SetupWithToken(ctx,
+		INFLUXDB_USER,
+		INFLUXDB_PASSWORD,
+		INFLUXDB_ORG,
+		INFLUXDB_BUCKET,
+		0, // infinite retention period
+		INFLUXDB_TOKEN)
+
+	if err != nil {
+		zap.L().Fatal("Error setting up InfluxDB", zap.Error(err))
+		return nil
+	}
+	zap.L().Info("InfluxDB is newly installed", zap.Any("auth_status", d.Auth.Status))
+	return client
 }
 
 // readStockList reads a list of stock symbols from a file.

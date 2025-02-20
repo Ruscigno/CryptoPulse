@@ -11,11 +11,8 @@ import (
 	"github.com/Ruscigno/stockscreener/feed/mexc"
 	"github.com/Ruscigno/stockscreener/model"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
-
-var log *logrus.Logger
 
 type StockScrapper interface {
 	DownloadMarketData(ctx context.Context, client influxdb2.Client, symbol string) error
@@ -28,8 +25,8 @@ type stockScrapper struct {
 }
 
 var (
-	INFLUX_ORG         string = os.Getenv("INFLUX_ORG")
-	INFLUX_BUCKET      string = os.Getenv("INFLUX_BUCKET")
+	INFLUXDB_ORG       string = os.Getenv("INFLUXDB_ORG")
+	INFLUXDB_BUCKET    string = os.Getenv("INFLUXDB_BUCKET")
 	DATA_FEED_PROVIDER string = os.Getenv("DATA_FEED_PROVIDER")
 )
 
@@ -108,8 +105,8 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 	defer mu.Unlock()
 
 	// query influxdb for the last date
-	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUX_BUCKET, symbol)
-	result, err := s.influx.QueryAPI(INFLUX_ORG).Query(ctx, query)
+	query := fmt.Sprintf(`from(bucket:"%s")|> range(start: -1y) |> filter(fn: (r) => r._measurement == "stock_data" and r.symbol == "%s") |> last()`, INFLUXDB_BUCKET, symbol)
+	result, err := s.influx.QueryAPI(INFLUXDB_ORG).Query(ctx, query)
 	if err != nil {
 		zap.L().Fatal("Error querying influxdb", zap.Error(err))
 		return time.Time{}
@@ -134,7 +131,7 @@ func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketDa
 	if data == nil || data.TimeSeries == nil {
 		return nil
 	}
-	writeAPI := s.influx.WriteAPIBlocking(INFLUX_ORG, INFLUX_BUCKET)
+	writeAPI := s.influx.WriteAPIBlocking(INFLUXDB_ORG, INFLUXDB_BUCKET)
 	for _, stockData := range data.TimeSeries {
 		p := influxdb2.NewPointWithMeasurement("stock_data").
 			AddTag("symbol", stockData.Symbol).

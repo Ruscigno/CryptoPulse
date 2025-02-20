@@ -7,11 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
-
-var log *logrus.Logger
 
 // MexcConfig holds configuration for the MEXC API.
 type MexcConfig struct {

@@ -1,19 +1,19 @@
 services:
-  # server:
-  #   build:
-  #     context: .
-  #   depends_on:
-  #     - postgres
-  #   ports:
-  #     - 3000:3000
-  #   environment:
-  #     LOG_LEVEL: debug
-  #     LOG_TEXTLOGGING: "true"
-  #     #PORT: 3000
-  #     DB_ADDR: postgres:51432
-  #     #DB_USER: postgres
-  #     #DB_PASSWORD: postgres
-  #     #DB_DATABASE: postgres
+  server:
+    build:
+      context: .
+    depends_on:
+      - influxdb
+    ports:
+      - 3000:3000
+    env_file:
+      - .env
+    # share stocklist.json with the container
+    volumes:
+      - ./stocklist.json:/src/stocklist.json
+    networks:
+      - cryptopulse_network
+    restart: unless-stopped
       
   # postgres:
   #   image: postgres:16
@@ -32,11 +32,15 @@ services:
       - 8086:8086
     volumes:
       - influxdb:/var/lib/influxdb
-    environment:
-      INFLUXDB_DB: influxdb
-      INFLUXDB_USER: influxdb
-      INFLUXDB_USER_PASSWORD: influxdb
+    env_file:
+      - .env
+    networks:
+      - cryptopulse_network
 
 volumes:
   postgres:
   influxdb:
+
+networks:
+  cryptopulse_network:
+    driver: bridge
