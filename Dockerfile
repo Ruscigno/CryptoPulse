@@ -13,7 +13,6 @@ RUN CGO_ENABLED=0 go build -o main .
 
 # Multi-Stage production build
 FROM alpine AS production
-RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 # Retrieve the binary from the previous stage
