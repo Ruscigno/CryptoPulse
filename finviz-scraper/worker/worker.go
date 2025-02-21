@@ -1,0 +1,48 @@
+package worker
+
+import (
+	"context"
+	"log"
+
+	"github.com/Ruscigno/stockscreener/models"
+)
+
+type Crawler interface {
+	Scrape(ctx context.Context, job *models.ScrapeJob) error
+}
+
+type Worker struct {
+	jobs    <-chan *models.ScrapeJob
+	crawler Crawler
+	stop    chan struct{}
+}
+
+func NewWorker(jobs <-chan *models.ScrapeJob, crawler Crawler) *Worker {
+	return &Worker{
+		jobs:    jobs,
+		crawler: crawler,
+		stop:    make(chan struct{}),
+	}
+}
+
+func (w *Worker) Start() {
+	go func() {
+		for {
+			select {
+			case job, ok := <-w.jobs:
+				if !ok {
+					return
+				}
+				if err := w.crawler.Scrape(context.Background(), job); err != nil {
+					log.Printf("Worker failed to process job %s: %v", job.ID, err)
+				}
+			case <-w.stop:
+				return
+			}
+		}
+	}()
+}
+
+func (w *Worker) Stop() {
+	close(w.stop)
+}

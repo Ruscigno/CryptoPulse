@@ -1,7 +1,9 @@
 services:
-  server:
+  crypto-pulse:
     build:
       context: .
+    command: ["./main", "serve"]
+    container_name: crypto-pulse
     depends_on:
       - influxdb
     ports:
@@ -11,9 +13,30 @@ services:
     # share stocklist.json with the container
     volumes:
       - ./stocklist.json:/src/stocklist.json
+      - ./crypto-pulse.log:/src/crypto-pulse.log
     networks:
       - cryptopulse_network
     restart: unless-stopped
+    profiles:
+      - crypto-pulse-app
+
+  finviz-scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["./main", "finviz-scraper"]
+    container_name: finviz-scraper
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3001:3000"
+    depends_on:
+      - mongodb
+    networks:
+      - cryptopulse_network
+    profiles:
+      - finviz-scraper-app
       
   # postgres:
   #   image: postgres:16
@@ -24,9 +47,12 @@ services:
   #     - postgres:/var/lib/postgresql/data
   #   environment:
   #     POSTGRES_PASSWORD: postgres
+    # profiles:
+    #   - database
 
-  influxdb:
+  crypto-pulse-influxdb:
     image: influxdb:2.1
+    container_name: crypto-pulse-influxdb
     restart: unless-stopped
     ports:
       - 8086:8086
@@ -36,10 +62,46 @@ services:
       - .env
     networks:
       - cryptopulse_network
+    profiles:
+      - database
+
+  crypto-pulse-mongodb:
+    image: mongo:latest
+    container_name: crypto-pulse-mongodb
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - cryptopulse_network
+    profiles:
+      - database
+
+  crypto-pulse-mongo-express:
+    image: mongo-express:latest
+    container_name: crypto-pulse-mongo-express
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8081:8081"
+    depends_on:
+      - crypto-pulse-mongodb
+    networks:
+      - cryptopulse_network
+    profiles:
+      - database
 
 volumes:
   postgres:
+    driver: local
   influxdb:
+    driver: local
+  mongodb_data:
+    driver: local
 
 networks:
   cryptopulse_network:
