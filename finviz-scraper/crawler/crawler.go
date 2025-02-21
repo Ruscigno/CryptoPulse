@@ -14,6 +14,7 @@ import (
 	"github.com/Ruscigno/stockscreener/models"
 	"github.com/gocolly/colly"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.uber.org/zap"
 )
 
 type Crawler struct {
@@ -41,6 +42,7 @@ func (c *Crawler) Scrape(ctx context.Context, job *models.ScrapeJob) error {
 	})
 
 	collector.OnHTML("table.screener-table", func(e *colly.HTMLElement) {
+		zap.L().Info("Scraping table", zap.String("url", e.Request.URL.String()))
 		e.DOM.Find("tr").Each(func(i int, row *goquery.Selection) {
 			if i == 0 {
 				return // Skip header row

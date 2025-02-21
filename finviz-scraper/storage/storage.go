@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Ruscigno/stockscreener/models"
@@ -69,5 +70,9 @@ func (s *MongoStorage) DeleteRule(ctx context.Context, id string) error {
 func (s *MongoStorage) SaveJob(ctx context.Context, job *models.ScrapeJob) error {
 	coll := s.db.Collection("jobs")
 	_, err := coll.InsertOne(ctx, job)
+	// if it exists, it will be replaced
+	if strings.Contains(err.Error(), "duplicate key error collection") {
+		_, err = coll.ReplaceOne(ctx, bson.M{"_id": job.ID}, job)
+	}
 	return err
 }

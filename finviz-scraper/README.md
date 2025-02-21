@@ -46,26 +46,42 @@ A modular, scalable web scraper built in **Golang** to extract data from the [Fi
 2. **Create a Scraping Rule**:
    Use `curl` or a tool like Postman to define a rule:
    ```bash
-   curl -X POST http://localhost:3001/rules -H "Content-Type: application/json" -d '{
-     "id": "rule1",
-     "name": "FinViz Screener",
-     "fields": [
-       {"field": "ticker", "selector": "td:nth-child(2) a"},
-       {"field": "company", "selector": "td:nth-child(3) a"},
-       {"field": "sector", "selector": "td:nth-child(4)"}
-     ],
-     "next_page": {"pattern": "r={offset}"}
-   }'
+   curl --location 'http://localhost:3001/rules' \
+      --header 'Content-Type: application/json' \
+      --data '{
+         "id": "FinViz001",
+         "name": "FinViz Screener overview tag",
+         "fields": [
+            {
+                  "field": "ticker",
+                  "selector": "td:nth-child(2) a"
+            },
+            {
+                  "field": "company",
+                  "selector": "td:nth-child(3) a"
+            },
+            {
+                  "field": "sector",
+                  "selector": "td:nth-child(4)"
+            }
+         ],
+         "next_page": {
+            "pattern": "r={offset}",
+            "limit": 20
+         }
+      }'
    ```
 
 3. **Start a Scraping Job**:
    Submit a job to scrape the FinViz screener:
    ```bash
-   curl -X POST http://localhost:3001/jobs -H "Content-Type: application/json" -d '{
-     "id": "job1",
-     "base_url": "https://finviz.com/screener.ashx?v=141&ft=4&o=-perfytd&ar=180",
-     "rule_id": "rule1"
-   }'
+   curl --location 'http://localhost:3001/jobs' \
+      --header 'Content-Type: application/json' \
+      --data '{
+         "id": "FinViz-job1",
+         "base_url": "https://finviz.com/screener.ashx?v=141&ft=4&o=-perfytd&ar=180",
+         "rule_id": "FinViz001"
+      }'
    ```
 
 4. **View Results**:

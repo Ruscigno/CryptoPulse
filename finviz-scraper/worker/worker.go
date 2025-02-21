@@ -2,9 +2,9 @@ package worker
 
 import (
 	"context"
-	"log"
 
 	"github.com/Ruscigno/stockscreener/models"
+	"go.uber.org/zap"
 )
 
 type Crawler interface {
@@ -34,7 +34,7 @@ func (w *Worker) Start() {
 					return
 				}
 				if err := w.crawler.Scrape(context.Background(), job); err != nil {
-					log.Printf("Worker failed to process job %s: %v", job.ID, err)
+					zap.L().Error("Worker failed to process job", zap.String("job_id", job.ID), zap.Error(err))
 				}
 			case <-w.stop:
 				return
