@@ -3,7 +3,6 @@ module github.com/Ruscigno/stockscreener
 go 1.23.2
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/gocolly/colly v1.2.0
@@ -15,9 +14,11 @@ require (
 	go.elastic.co/ecszap v1.0.3
 	go.mongodb.org/mongo-driver v1.17.2
 	go.uber.org/zap v1.27.0
+	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6
 )
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.2 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/antchfx/htmlquery v1.3.4 // indirect
 	github.com/antchfx/xmlquery v1.4.4 // indirect

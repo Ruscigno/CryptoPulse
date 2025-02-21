@@ -36,6 +36,7 @@ func (w *Worker) Start() {
 				if err := w.crawler.Scrape(context.Background(), job); err != nil {
 					zap.L().Error("Worker failed to process job", zap.String("job_id", job.ID), zap.Error(err))
 				}
+				zap.L().Info("Worker processed job", zap.String("job_id", job.ID))
 			case <-w.stop:
 				return
 			}

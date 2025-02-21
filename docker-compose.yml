@@ -80,21 +80,6 @@ services:
     profiles:
       - database
 
-  crypto-pulse-mongo-express:
-    image: mongo-express:latest
-    container_name: crypto-pulse-mongo-express
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "8081:8081"
-    depends_on:
-      - crypto-pulse-mongodb
-    networks:
-      - cryptopulse_network
-    profiles:
-      - database
-
 volumes:
   postgres:
     driver: local

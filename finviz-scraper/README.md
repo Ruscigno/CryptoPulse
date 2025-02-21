@@ -46,41 +46,27 @@ A modular, scalable web scraper built in **Golang** to extract data from the [Fi
 2. **Create a Scraping Rule**:
    Use `curl` or a tool like Postman to define a rule:
    ```bash
-   curl --location 'http://localhost:3001/rules' \
+      curl --location 'http://localhost:3001/rules/' \
       --header 'Content-Type: application/json' \
-      --data '{
-         "id": "FinViz001",
-         "name": "FinViz Screener overview tag",
-         "fields": [
-            {
-                  "field": "ticker",
-                  "selector": "td:nth-child(2) a"
-            },
-            {
-                  "field": "company",
-                  "selector": "td:nth-child(3) a"
-            },
-            {
-                  "field": "sector",
-                  "selector": "td:nth-child(4)"
-            }
-         ],
-         "next_page": {
-            "pattern": "r={offset}",
-            "limit": 20
-         }
-      }'
+      --data '{"id":"FinViz-rule001","name":"FinViz Overview","table":{"selector":"#screener-table > td > table > tbody > tr > td > table > tbody","rows":{"selector":"tr","fields":[{"field":"ticker","selector":"td:nth-child(2) a"},{"field":"company","selector":"td:nth-child(3) a"},{"field":"sector","selector":"td:nth-child(4)"},{"field":"industry","selector":"td:nth-child(5)"},{"field":"market_cap","selector":"td:nth-child(7)"},{"field":"price_to_earnings","selector":"td:nth-child(8)"},{"field":"price","selector":"td:nth-child(9)"},{"field":"change","selector":"td:nth-child(10)"},{"field":"volume","selector":"td:nth-child(11)"}]}},"next_page":{"pattern":"r={offset}","limit":20}}'
    ```
 
 3. **Start a Scraping Job**:
    Submit a job to scrape the FinViz screener:
    ```bash
-   curl --location 'http://localhost:3001/jobs' \
+      curl --location 'http://localhost:3001/jobs' \
       --header 'Content-Type: application/json' \
       --data '{
          "id": "FinViz-job1",
-         "base_url": "https://finviz.com/screener.ashx?v=141&ft=4&o=-perfytd&ar=180",
-         "rule_id": "FinViz001"
+         "base_url": "https://finviz.com/screener.ashx?v=111&ft=4&o=-marketcap&ar=180",
+         "rule_id": "FinViz-rule001",
+         "domain_global": "*.finviz.com/*",
+         "parallelism": 10,
+         "delay": 1000,
+         "user_agent": "Mozilla/5.0",
+         "max_depth": 0,
+         "offset_increment": 20,
+         "offset_max": 200
       }'
    ```
 
