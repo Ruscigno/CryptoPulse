@@ -9,7 +9,7 @@ import (
 
 	"github.com/Ruscigno/stockscreener/feed"
 	"github.com/Ruscigno/stockscreener/feed/mexc"
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"go.uber.org/zap"
 )
@@ -43,6 +43,10 @@ func NewStockScrapper() StockScrapper {
 	case feed.DataFeedProviderMEXC:
 		return &stockScrapper{
 			feed: mexc.NewMexcDataFeed(),
+		}
+	case feed.DataFeedProviderYahoo:
+		return &stockScrapper{
+			feed: feed.NewYahooDataFeed(),
 		}
 	default:
 		zap.L().Fatal("Unsupported data feed provider", zap.String("provider", DATA_FEED_PROVIDER))
@@ -127,7 +131,7 @@ func (s *stockScrapper) getLastDate(ctx context.Context, symbol string) time.Tim
 	return s.lastestDate.Add(-time.Hour * 24)
 }
 
-func (s *stockScrapper) storeStockData(ctx context.Context, data *model.MarketData) error {
+func (s *stockScrapper) storeStockData(ctx context.Context, data *models.MarketData) error {
 	if data == nil || data.TimeSeries == nil {
 		return nil
 	}

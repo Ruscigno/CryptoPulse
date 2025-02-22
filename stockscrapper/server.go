@@ -29,13 +29,8 @@ type Server struct {
 
 func NewServer() *Server {
 	srv := &Server{}
-	srv.getServerInfo()
 	srv.scraper = NewStockScrapper()
 	return srv
-}
-
-func (s *Server) getServerInfo() {
-
 }
 
 func (s *Server) worker(client influxdb2.Client, id int, done chan bool, symbol string, timeFrame time.Duration) {

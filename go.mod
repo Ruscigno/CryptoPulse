@@ -14,7 +14,6 @@ require (
 	go.elastic.co/ecszap v1.0.3
 	go.mongodb.org/mongo-driver v1.17.2
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6
 )
 
 require (

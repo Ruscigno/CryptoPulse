@@ -10,6 +10,7 @@ const (
 	DataFeedProviderLocal        = "local"
 	DataFeedProviderAlphaVantage = "alphavantage"
 	DataFeedProviderMEXC         = "mexc"
+	DataFeedProviderYahoo        = "yahoo"
 )
 
 type FeedConsumer interface {
