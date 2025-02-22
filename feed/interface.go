@@ -3,7 +3,7 @@ package feed
 import (
 	"time"
 
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/models"
 )
 
 const (

@@ -4,11 +4,11 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/Ruscigno/stockscreener/api"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/config"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/crawler"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/storage"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/worker"
+	"github.com/Ruscigno/cryptopulse/api"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/config"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/crawler"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/storage"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/worker"
 	"go.uber.org/zap"
 )
 

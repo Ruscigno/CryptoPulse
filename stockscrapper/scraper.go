@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/feed"
-	"github.com/Ruscigno/stockscreener/feed/mexc"
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/feed"
+	"github.com/Ruscigno/cryptopulse/feed/mexc"
+	"github.com/Ruscigno/cryptopulse/models"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"go.uber.org/zap"
 )

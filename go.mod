@@ -1,4 +1,4 @@
-module github.com/Ruscigno/stockscreener
+module github.com/Ruscigno/cryptopulse
 
 go 1.23.2
 

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/models"
 	"go.uber.org/zap"
 )
 

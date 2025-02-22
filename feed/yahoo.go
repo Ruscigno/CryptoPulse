@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/models"
-	"github.com/Ruscigno/stockscreener/utils"
+	"github.com/Ruscigno/cryptopulse/models"
+	"github.com/Ruscigno/cryptopulse/utils"
 )
 
 const (

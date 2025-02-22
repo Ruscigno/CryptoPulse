@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/Ruscigno/stockscreener/cmd"
-	"github.com/Ruscigno/stockscreener/logging"
+	"github.com/Ruscigno/cryptopulse/cmd"
+	"github.com/Ruscigno/cryptopulse/logging"
 	"go.uber.org/zap"
 )
 

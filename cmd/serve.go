@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/Ruscigno/stockscreener/stockscrapper"
+	"github.com/Ruscigno/cryptopulse/stockscrapper"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	fs "github.com/Ruscigno/stockscreener/finviz-scraper"
+	fs "github.com/Ruscigno/cryptopulse/finviz-scraper"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

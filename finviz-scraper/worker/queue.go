@@ -1,7 +1,7 @@
 package worker
 
 import (
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/models"
 )
 
 type WorkQueue struct {

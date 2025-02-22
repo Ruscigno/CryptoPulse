@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/Ruscigno/stockscreener/finviz-scraper/storage"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/worker"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/storage"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/worker"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

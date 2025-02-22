@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/models"
 	"go.uber.org/zap"
 )
 

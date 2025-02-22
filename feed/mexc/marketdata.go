@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/feed"
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/feed"
+	"github.com/Ruscigno/cryptopulse/models"
 	"go.uber.org/zap"
 )
 

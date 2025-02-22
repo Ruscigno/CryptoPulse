@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/Ruscigno/stockscreener/finviz-scraper/storage"
-	"github.com/Ruscigno/stockscreener/finviz-scraper/worker"
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/storage"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/worker"
+	"github.com/Ruscigno/cryptopulse/models"
 	"github.com/gin-gonic/gin"
 )
 

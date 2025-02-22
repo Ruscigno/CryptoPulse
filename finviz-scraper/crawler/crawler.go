@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/finviz-scraper/storage"
-	"github.com/Ruscigno/stockscreener/models"
+	"github.com/Ruscigno/cryptopulse/finviz-scraper/storage"
+	"github.com/Ruscigno/cryptopulse/models"
 	"github.com/gocolly/colly"
 	"go.uber.org/zap"
 )
