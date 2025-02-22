@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 	"go.uber.org/zap"
 )
 
@@ -30,7 +30,7 @@ type APIResponse struct {
 	TimeSeries map[string]map[string]string `json:"Time Series (1min)"`
 }
 
-func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketData, error) {
+func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*models.MarketData, error) {
 	var response APIResponse
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		zap.L().Error("failed to unmarshal JSON", zap.Error(err))
@@ -43,8 +43,8 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 		return nil, nil
 	}
 
-	alphavantage := model.MarketData{
-		MetaData: &model.MetaData{
+	alphavantage := models.MarketData{
+		MetaData: &models.MetaData{
 			Information: response.MetaData[FIELD_INFORMATION],
 			Symbol:      response.MetaData[FIELD_SYMBOL],
 			Interval:    response.MetaData[FIELD_INTERVAL],
@@ -97,7 +97,7 @@ func (s *alphaVantageScrapper) ParseStockData(jsonData []byte) (*model.MarketDat
 			return nil, fmt.Errorf("failed to parse timestamp: %v", err)
 		}
 
-		stockData := &model.StockData{
+		stockData := &models.StockData{
 			Symbol:   alphavantage.MetaData.Symbol,
 			Open:     open,
 			High:     high,

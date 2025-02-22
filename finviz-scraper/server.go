@@ -24,7 +24,7 @@ func StartFinvizScraperServer() {
 
 	// Initialize crawler and worker pool
 	cr := crawler.NewCrawler(store)
-	wq := worker.NewWorkQueue(10, cr) // 10 workers
+	wq := worker.NewWorkQueue(1, cr) // 10 workers?
 	defer wq.Stop()
 
 	// Start API server

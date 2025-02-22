@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 	"go.uber.org/zap"
 )
 
@@ -17,7 +17,7 @@ func NewLocalDataFeed() FeedConsumer {
 	return &localDataFeed{}
 }
 
-func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
+func (s *localDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*models.MarketData, error) {
 	fileName := fmt.Sprintf("feed/data/%s_%s.json", symbol, startTime.Format("2006-01"))
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
 		zap.L().Error("file does not exist", zap.String("file", fileName))

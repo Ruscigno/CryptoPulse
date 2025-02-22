@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 	"go.uber.org/zap"
 )
 
@@ -35,8 +35,8 @@ func NewAlphaVantageScrapper() FeedConsumer {
 	return &alphaVantageScrapper{}
 }
 
-func (s *alphaVantageScrapper) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
-	var result *model.MarketData
+func (s *alphaVantageScrapper) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*models.MarketData, error) {
+	var result *models.MarketData
 	// build a list of months to download, from the lastDate to the current date
 	months := buildMonthList(startTime)
 	// iterate over the months and download the data
@@ -75,7 +75,7 @@ func buildMonthList(lastDate time.Time) []time.Time {
 	return months
 }
 
-func (s *alphaVantageScrapper) fetchMarketData(symbol string, month time.Time) (*model.MarketData, error) {
+func (s *alphaVantageScrapper) fetchMarketData(symbol string, month time.Time) (*models.MarketData, error) {
 	// format month as "YYYY-MM"
 	monthStr := month.Format("2006-01")
 	// Build the URL

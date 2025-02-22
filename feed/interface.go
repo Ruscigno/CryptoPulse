@@ -3,7 +3,7 @@ package feed
 import (
 	"time"
 
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 )
 
 const (
@@ -13,6 +13,6 @@ const (
 )
 
 type FeedConsumer interface {
-	DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error)
+	DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*models.MarketData, error)
 	GetServerTimeZone() (string, error)
 }

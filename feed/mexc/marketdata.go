@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Ruscigno/stockscreener/feed"
-	"github.com/Ruscigno/stockscreener/model"
+	"github.com/Ruscigno/stockscreener/models"
 	"go.uber.org/zap"
 )
 
@@ -60,13 +60,13 @@ func NewMexcDataFeed() feed.FeedConsumer {
 	}
 }
 
-func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*model.MarketData, error) {
+func (s *mexcDataFeed) DownloadMarketData(symbol string, startTime time.Time, endTime *time.Time) (*models.MarketData, error) {
 	if endTime == nil {
 		now := time.Now()
 		endTime = &now
 	}
-	result := &model.MarketData{
-		MetaData: &model.MetaData{
+	result := &models.MarketData{
+		MetaData: &models.MetaData{
 			Symbol:        symbol,
 			LastRefreshed: time.Time{},
 			Interval:      interval,
@@ -122,7 +122,7 @@ func buildRequestTimeList(startTime time.Time, endTime time.Time) []*timeRequest
 	return requests
 }
 
-func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTime time.Time) (*model.MarketData, error) {
+func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTime time.Time) (*models.MarketData, error) {
 	defer s.client.CloseIdleConnections()
 
 	url := fmt.Sprintf(FetchMarketDataURL, BaseURL, symbol, interval, startTime.UnixMilli(), endTime.UnixMilli(), limit)
@@ -154,7 +154,7 @@ func (s *mexcDataFeed) fetchMarketData(symbol string, startTime time.Time, endTi
 
 // ParseMexcResponse parses the MEXC BTCUSDT price data JSON response.
 // It returns a MarketData instance containing a slice of KlineData.
-func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model.MarketData, error) {
+func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*models.MarketData, error) {
 	// Define a variable to hold the raw data
 	var rawData [][]interface{}
 
@@ -164,8 +164,8 @@ func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model
 	}
 
 	// Initialize MarketData
-	marketData := &model.MarketData{
-		TimeSeries: make([]*model.StockData, 0, len(rawData)),
+	marketData := &models.MarketData{
+		TimeSeries: make([]*models.StockData, 0, len(rawData)),
 	}
 
 	// Iterate over each entry in rawData
@@ -265,8 +265,8 @@ func (s *mexcDataFeed) parseMexcResponse(symbol string, jsonData []byte) (*model
 			continue
 		}
 
-		// Create model.StockData instance
-		stockData := &model.StockData{
+		// Create models.StockData instance
+		stockData := &models.StockData{
 			Symbol:    symbol,
 			Open:      open,
 			High:      high,
