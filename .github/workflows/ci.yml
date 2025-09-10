@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 env:
   GO_VERSION: '1.25'
   DOCKER_BUILDKIT: 1
@@ -344,6 +349,19 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Display security scan results
+        if: always()
+        run: |
+          echo "Security scan completed. Results:"
+          if [ -f "trivy-results.sarif" ]; then
+            echo "SARIF file generated successfully"
+            # Show a summary of findings
+            cat trivy-results.sarif | jq -r '.runs[0].results[] | .message.text' || echo "No security issues found or jq not available"
+          else
+            echo "No SARIF file generated"
+          fi
 
   # Job 7: Notification
   notify:
