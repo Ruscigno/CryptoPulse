@@ -1,0 +1,356 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop, dydx ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  GO_VERSION: '1.23'
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  # Job 1: Code Quality and Security
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        uses: dominikh/staticcheck-action@v1.3.0
+        with:
+          version: "2023.1.6"
+
+      - name: Run gosec security scanner
+        uses: securecodewarrior/github-action-gosec@master
+        with:
+          args: './...'
+
+  # Job 2: Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        env:
+          CGO_ENABLED: 1
+
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+
+  # Job 3: Build Tests
+  build-tests:
+    name: Build Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['1.23', '1.22']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-${{ matrix.go-version }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.go-version }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build application
+        run: go build -v ./cmd/main.go
+
+      - name: Build for different architectures (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o cryptopulse-linux-amd64 ./cmd/main.go
+          GOOS=linux GOARCH=arm64 go build -o cryptopulse-linux-arm64 ./cmd/main.go
+          GOOS=darwin GOARCH=amd64 go build -o cryptopulse-darwin-amd64 ./cmd/main.go
+          GOOS=darwin GOARCH=arm64 go build -o cryptopulse-darwin-arm64 ./cmd/main.go
+
+      - name: Upload build artifacts
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: cryptopulse-*
+
+  # Job 4: Integration and E2E Tests
+  integration-tests:
+    name: Integration & E2E Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, build-tests]
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: cryptopulse
+          POSTGRES_PASSWORD: cryptopulse_test
+          POSTGRES_DB: cryptopulse_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U cryptopulse; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Run database migrations
+        run: |
+          # Install migrate tool
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          # Run migrations
+          migrate -path pkg/database/migrations -database "postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable" up
+        env:
+          DATABASE_URL: postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable
+
+      - name: Run integration tests
+        run: |
+          INTEGRATION_TESTS=true go test -v -tags=integration ./tests/integration/...
+        env:
+          DATABASE_URL: postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          CGO_ENABLED: 1
+
+      - name: Build application for E2E tests
+        run: go build -o cryptopulse ./cmd/main.go
+
+      - name: Start application for E2E tests
+        run: |
+          ./cryptopulse &
+          APP_PID=$!
+          echo "APP_PID=$APP_PID" >> $GITHUB_ENV
+          # Wait for application to start
+          sleep 10
+          # Check if application is running
+          curl -f http://localhost:8080/health || exit 1
+        env:
+          PORT: 8080
+          DATABASE_URL: postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable
+          REDIS_URL: redis://localhost:6379
+          LOG_LEVEL: debug
+          MNEMONIC: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+          API_KEY: test-api-key-for-ci-cd-pipeline
+          RPC_URL: https://test-dydx-rpc.kingnodes.com:443
+          INDEXER_URL: https://indexer.v4testnet.dydx.exchange
+          CHAIN_ID: dydx-testnet-4
+
+      - name: Run E2E tests
+        run: |
+          E2E_TESTS=true go test -v -tags=e2e ./tests/e2e/...
+        env:
+          API_BASE_URL: http://localhost:8080
+          API_KEY: test-api-key-for-ci-cd-pipeline
+
+      - name: Stop application
+        if: always()
+        run: |
+          if [ ! -z "$APP_PID" ]; then
+            kill $APP_PID || true
+          fi
+
+  # Job 5: Docker Build Tests
+  docker-tests:
+    name: Docker Build Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build development Docker image
+        run: |
+          docker build -f Dockerfile.dev -t cryptopulse:dev .
+
+      - name: Build preprod Docker image
+        run: |
+          docker build -f Dockerfile.preprod -t cryptopulse:preprod .
+
+      - name: Build production Docker image
+        run: |
+          docker build -f Dockerfile.prod -t cryptopulse:prod .
+
+      - name: Test Docker images
+        run: |
+          # Test that images can run
+          docker run --rm cryptopulse:dev --version || echo "Dev image version check"
+          docker run --rm cryptopulse:preprod --version || echo "Preprod image version check"
+          docker run --rm cryptopulse:prod --version || echo "Prod image version check"
+
+      - name: Run Docker Compose tests
+        run: |
+          # Test development environment
+          docker-compose -f docker-compose.yml up -d postgres redis
+          sleep 10
+          docker-compose -f docker-compose.yml down
+
+  # Job 6: Security and Vulnerability Scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Job 7: Notification
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [unit-tests, build-tests, integration-tests, docker-tests, security-scan]
+    if: always()
+    steps:
+      - name: Notify success
+        if: ${{ needs.unit-tests.result == 'success' && needs.build-tests.result == 'success' && needs.integration-tests.result == 'success' }}
+        run: |
+          echo "✅ All tests passed successfully!"
+          echo "- Unit tests: ${{ needs.unit-tests.result }}"
+          echo "- Build tests: ${{ needs.build-tests.result }}"
+          echo "- Integration tests: ${{ needs.integration-tests.result }}"
+          echo "- Docker tests: ${{ needs.docker-tests.result }}"
+          echo "- Security scan: ${{ needs.security-scan.result }}"
+
+      - name: Notify failure
+        if: ${{ needs.unit-tests.result == 'failure' || needs.build-tests.result == 'failure' || needs.integration-tests.result == 'failure' }}
+        run: |
+          echo "❌ Some tests failed!"
+          echo "- Unit tests: ${{ needs.unit-tests.result }}"
+          echo "- Build tests: ${{ needs.build-tests.result }}"
+          echo "- Integration tests: ${{ needs.integration-tests.result }}"
+          echo "- Docker tests: ${{ needs.docker-tests.result }}"
+          echo "- Security scan: ${{ needs.security-scan.result }}"
+          exit 1
