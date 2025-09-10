@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/Ruscigno/CryptoPulse/pkg/config"
@@ -248,17 +250,26 @@ func (db *DB) GetStats() sql.DBStats {
 
 // Helper functions for environment variable parsing
 func getEnvString(key, defaultValue string) string {
-	// This would typically use os.Getenv, but for now return default
-	// In a real implementation, you'd integrate with your config system
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
 	return defaultValue
 }
 
 func getEnvInt(key string, defaultValue int) int {
-	// This would typically parse from os.Getenv, but for now return default
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
+	}
 	return defaultValue
 }
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
-	// This would typically parse from os.Getenv, but for now return default
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil {
+			return parsed
+		}
+	}
 	return defaultValue
 }

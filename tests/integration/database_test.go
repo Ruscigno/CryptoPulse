@@ -40,10 +40,16 @@ func setupTestDB(t *testing.T) (*database.DB, func()) {
 
 // getTestDatabaseURL returns the test database URL
 func getTestDatabaseURL() string {
+	// First try TEST_DATABASE_URL (specific for tests)
 	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
 		return url
 	}
-	return "postgres://postgres:password@localhost:5432/cryptopulse_test?sslmode=disable"
+	// Then try DATABASE_URL (used by GitHub Actions)
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
+	}
+	// Default fallback for local development
+	return "postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable"
 }
 
 // TestDatabaseConnection tests basic database connectivity
