@@ -74,7 +74,9 @@ func RequestValidation(config ValidationConfig) func(http.Handler) http.Handler 
 					http.Error(w, "Failed to read request body", http.StatusBadRequest)
 					return
 				}
-				r.Body.Close()
+				if closeErr := r.Body.Close(); closeErr != nil {
+					config.Logger.Error("Failed to close request body", zap.Error(closeErr))
+				}
 
 				// Validate JSON format
 				if len(body) > 0 {
@@ -326,5 +328,9 @@ func ErrorResponse(w http.ResponseWriter, statusCode int, message string, detail
 		response["details"] = details
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		// Log the error but don't return another error response to avoid infinite loop
+		// The response has already been started, so we can't change the status code
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }

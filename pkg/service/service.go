@@ -232,7 +232,9 @@ func (s *service) PlaceOrder(ctx context.Context, req OrderRequest) (OrderRespon
 		order.Status = repository.OrderStatusRejected
 		errMsg := err.Error()
 		order.ErrorMessage = &errMsg
-		s.orderRepo.UpdateOrder(ctx, order)
+		if updateErr := s.orderRepo.UpdateOrder(ctx, order); updateErr != nil {
+			s.logger.Error("Failed to update order status to rejected", zap.Error(updateErr))
+		}
 
 		s.logger.Error("Failed to place order after retries", zap.Error(err))
 		return OrderResponse{}, fmt.Errorf("failed to place order: %w", err)

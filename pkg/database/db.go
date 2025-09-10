@@ -24,25 +24,25 @@ type DB struct {
 
 // Config holds database configuration
 type Config struct {
-	URL                string
-	Host               string
-	Port               int
-	Name               string
-	User               string
-	Password           string
-	SSLMode            string
-	MaxOpenConns       int
-	MaxIdleConns       int
-	ConnMaxLifetime    time.Duration
-	MigrationsPath     string
-	ConnectionTimeout  time.Duration
-	QueryTimeout       time.Duration
+	URL               string
+	Host              string
+	Port              int
+	Name              string
+	User              string
+	Password          string
+	SSLMode           string
+	MaxOpenConns      int
+	MaxIdleConns      int
+	ConnMaxLifetime   time.Duration
+	MigrationsPath    string
+	ConnectionTimeout time.Duration
+	QueryTimeout      time.Duration
 }
 
 // NewDB creates a new database connection
 func NewDB(cfg config.Config, logger *zap.Logger) (*DB, error) {
 	dbConfig := parseDBConfig(cfg)
-	
+
 	// Create connection string if not provided
 	var dsn string
 	if dbConfig.URL != "" {
@@ -52,7 +52,7 @@ func NewDB(cfg config.Config, logger *zap.Logger) (*DB, error) {
 			dbConfig.Host, dbConfig.Port, dbConfig.User, dbConfig.Password, dbConfig.Name, dbConfig.SSLMode)
 	}
 
-	logger.Info("Connecting to database", 
+	logger.Info("Connecting to database",
 		zap.String("host", dbConfig.Host),
 		zap.Int("port", dbConfig.Port),
 		zap.String("database", dbConfig.Name),
@@ -69,7 +69,9 @@ func NewDB(cfg config.Config, logger *zap.Logger) (*DB, error) {
 
 	// Test connection
 	if err := sqlDB.PingContext(ctx); err != nil {
-		sqlDB.Close()
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			return nil, fmt.Errorf("failed to ping database: %w, and failed to close connection: %w", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -93,19 +95,19 @@ func NewDB(cfg config.Config, logger *zap.Logger) (*DB, error) {
 // parseDBConfig extracts database configuration from the main config
 func parseDBConfig(cfg config.Config) Config {
 	return Config{
-		URL:                getEnvString("DATABASE_URL", ""),
-		Host:               getEnvString("DATABASE_HOST", "localhost"),
-		Port:               getEnvInt("DATABASE_PORT", 5432),
-		Name:               getEnvString("DATABASE_NAME", "cryptopulse"),
-		User:               getEnvString("DATABASE_USER", "cryptopulse"),
-		Password:           getEnvString("DATABASE_PASSWORD", "cryptopulse_dev"),
-		SSLMode:            getEnvString("DATABASE_SSL_MODE", "disable"),
-		MaxOpenConns:       getEnvInt("DATABASE_MAX_OPEN_CONNS", 25),
-		MaxIdleConns:       getEnvInt("DATABASE_MAX_IDLE_CONNS", 5),
-		ConnMaxLifetime:    getEnvDuration("DATABASE_CONN_MAX_LIFETIME", 5*time.Minute),
-		MigrationsPath:     "file://pkg/database/migrations",
-		ConnectionTimeout:  30 * time.Second,
-		QueryTimeout:       30 * time.Second,
+		URL:               getEnvString("DATABASE_URL", ""),
+		Host:              getEnvString("DATABASE_HOST", "localhost"),
+		Port:              getEnvInt("DATABASE_PORT", 5432),
+		Name:              getEnvString("DATABASE_NAME", "cryptopulse"),
+		User:              getEnvString("DATABASE_USER", "cryptopulse"),
+		Password:          getEnvString("DATABASE_PASSWORD", "cryptopulse_dev"),
+		SSLMode:           getEnvString("DATABASE_SSL_MODE", "disable"),
+		MaxOpenConns:      getEnvInt("DATABASE_MAX_OPEN_CONNS", 25),
+		MaxIdleConns:      getEnvInt("DATABASE_MAX_IDLE_CONNS", 5),
+		ConnMaxLifetime:   getEnvDuration("DATABASE_CONN_MAX_LIFETIME", 5*time.Minute),
+		MigrationsPath:    "file://pkg/database/migrations",
+		ConnectionTimeout: 30 * time.Second,
+		QueryTimeout:      30 * time.Second,
 	}
 }
 
@@ -161,8 +163,8 @@ func (db *DB) RunMigrations() error {
 	if err != nil {
 		db.logger.Warn("Could not get migration version", zap.Error(err))
 	} else {
-		db.logger.Info("Migration completed", 
-			zap.Uint("version", version), 
+		db.logger.Info("Migration completed",
+			zap.Uint("version", version),
 			zap.Bool("dirty", dirty))
 	}
 
@@ -197,8 +199,8 @@ func (db *DB) RollbackMigrations(steps int) error {
 	if err != nil {
 		db.logger.Warn("Could not get migration version", zap.Error(err))
 	} else {
-		db.logger.Info("Migration rollback completed", 
-			zap.Uint("version", version), 
+		db.logger.Info("Migration rollback completed",
+			zap.Uint("version", version),
 			zap.Bool("dirty", dirty))
 	}
 
@@ -219,7 +221,9 @@ func (db *DB) WithTransaction(ctx context.Context, fn func(*sqlx.Tx) error) erro
 
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			if rbErr := tx.Rollback(); rbErr != nil {
+				db.logger.Error("Failed to rollback transaction during panic", zap.Error(rbErr))
+			}
 			panic(p)
 		} else if err != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {

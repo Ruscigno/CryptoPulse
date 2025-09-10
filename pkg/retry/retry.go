@@ -2,9 +2,10 @@ package retry
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"go.uber.org/zap"
@@ -165,8 +166,14 @@ func calculateDelay(attempt int, config RetryConfig) time.Duration {
 
 	// Add jitter if enabled
 	if config.Jitter {
-		jitter := delay * 0.1 * (rand.Float64()*2 - 1) // ±10% jitter
-		delay += jitter
+		// Use crypto/rand for secure random jitter
+		randomBig, err := rand.Int(rand.Reader, big.NewInt(200))
+		if err == nil {
+			// Convert to float64 in range [-1, 1]
+			randomFloat := (float64(randomBig.Int64()) / 100.0) - 1.0
+			jitter := delay * 0.1 * randomFloat // ±10% jitter
+			delay += jitter
+		}
 	}
 
 	return time.Duration(delay)

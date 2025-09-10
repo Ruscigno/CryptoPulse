@@ -109,7 +109,16 @@ func main() {
 		zap.Int("max_body_size", int(httpConfig.MaxBodySize)),
 		zap.Int("rate_limit", httpConfig.RequestsPerSecond))
 
-	if err := http.ListenAndServe(port, handler); err != nil {
+	// Create server with timeouts for security
+	server := &http.Server{
+		Addr:         port,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		logger.Fatal("Server failed", zap.Error(err))
 	}
 }
