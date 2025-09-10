@@ -128,6 +128,7 @@ type Service interface {
 	ClosePosition(ctx context.Context, req ClosePositionRequest) (ClosePositionResponse, error)
 	GetOrderStatus(ctx context.Context, orderID string) (OrderStatusResponse, error)
 	GetOrderHistory(ctx context.Context, req OrderHistoryRequest) (OrderHistoryResponse, error)
+	CheckHealth(ctx context.Context) (HealthResponse, error)
 }
 
 // service implements the Service interface
@@ -396,4 +397,15 @@ func (s *service) getPositionsWithRetry(ctx context.Context, address string) (*q
 	}
 
 	return positionsResp, nil
+}
+
+// CheckHealth performs a health check of the service and its dependencies
+func (s *service) CheckHealth(ctx context.Context) (HealthResponse, error) {
+	// Create a health service instance
+	healthSvc := NewHealthService(s.db, s.logger, "1.0.0")
+
+	// Perform the health check
+	healthResponse := healthSvc.CheckHealth(ctx)
+
+	return healthResponse, nil
 }

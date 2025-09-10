@@ -16,6 +16,7 @@ type Endpoints struct {
 	ClosePosition   endpoint.Endpoint
 	GetOrderStatus  endpoint.Endpoint
 	GetOrderHistory endpoint.Endpoint
+	CheckHealth     endpoint.Endpoint
 }
 
 // MakeEndpoints creates endpoints for the service.
@@ -27,6 +28,7 @@ func MakeEndpoints(s service.Service) Endpoints {
 		ClosePosition:   makeClosePositionEndpoint(s),
 		GetOrderStatus:  makeGetOrderStatusEndpoint(s),
 		GetOrderHistory: makeGetOrderHistoryEndpoint(s),
+		CheckHealth:     makeCheckHealthEndpoint(s),
 	}
 }
 
@@ -83,5 +85,11 @@ func makeGetOrderHistoryEndpoint(s service.Service) endpoint.Endpoint {
 			return nil, errors.New("invalid request")
 		}
 		return s.GetOrderHistory(ctx, req)
+	}
+}
+
+func makeCheckHealthEndpoint(s service.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		return s.CheckHealth(ctx)
 	}
 }

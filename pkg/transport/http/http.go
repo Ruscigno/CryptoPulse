@@ -70,6 +70,13 @@ func NewHTTPHandler(endpoints endpoint.Endpoints, config HTTPConfig) http.Handle
 		encodeResponse,
 	))
 
+	// Health Check endpoint (no authentication required)
+	mux.Handle("/health", httptransport.NewServer(
+		endpoints.CheckHealth,
+		decodeHealthRequest,
+		encodeResponse,
+	))
+
 	// Apply middleware stack
 	var handler http.Handler = mux
 
@@ -168,6 +175,11 @@ func decodeGetOrderHistoryRequest(_ context.Context, r *http.Request) (interface
 	}
 
 	return req, nil
+}
+
+func decodeHealthRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	// Health check doesn't need any request parameters
+	return nil, nil
 }
 
 func encodeResponse(_ context.Context, w http.ResponseWriter, response interface{}) error {
