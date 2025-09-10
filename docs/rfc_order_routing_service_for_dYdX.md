@@ -1,7 +1,7 @@
 # RFC: Order Routing Service for dYdX V4 Exchange
 
-**Authors:** Sander Ruscigno
-**Status:** Implemented
+**Authors:** Sander Ruscigno  
+**Status:** Implemented  
 **Date:** September 05, 2025  
 **Version:** 1.1  
 
