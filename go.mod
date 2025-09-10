@@ -1,6 +1,6 @@
 module github.com/Ruscigno/CryptoPulse
 
-go 1.23.2
+go 1.23
 
 require (
 	github.com/cosmos/cosmos-sdk v0.53.4
