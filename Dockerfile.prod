@@ -3,7 +3,7 @@
 FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev
+RUN apk add --no-cache git ca-certificates tzdata gcc musl-dev file
 
 # Set working directory
 WORKDIR /app
@@ -21,13 +21,14 @@ COPY . .
 # Disable race detection, enable all optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -a -installsuffix cgo \
-    -ldflags="-w -s -extldflags '-static' -X main.version=$(git describe --tags --always --dirty) -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    -tags netgo \
+    -ldflags="-w -s -extldflags '-static' -X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo 'unknown') -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -tags "netgo osusergo" \
+    -trimpath \
     -o cryptopulse \
     ./cmd/main.go
 
-# Verify the binary
-RUN ldd cryptopulse 2>&1 | grep -q "not a dynamic executable" || (echo "Binary is not static" && exit 1)
+# Verify the binary is static
+RUN file cryptopulse | grep -q "statically linked" || (echo "Binary is not statically linked" && exit 1)
 
 # Stage 2: Final production image using distroless
 FROM gcr.io/distroless/static-debian12:nonroot
