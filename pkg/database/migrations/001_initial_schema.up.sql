@@ -1,5 +1,5 @@
 -- CryptoPulse dYdX Order Routing Service - Initial Database Schema
--- Migration: 001_initial_schema.sql
+-- Migration: 001_initial_schema.up.sql
 -- Description: Create initial tables for orders and order status history
 
 -- Enable UUID extension

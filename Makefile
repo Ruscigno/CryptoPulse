@@ -39,13 +39,32 @@ dev-clean: ## Clean development environment (remove volumes)
 .PHONY: migrate-up
 migrate-up: ## Apply database migrations
 	@echo "Applying database migrations..."
-	@if [ ! -d "$(MIGRATION_DIR)" ]; then mkdir -p $(MIGRATION_DIR); fi
-	$(DOCKER_COMPOSE) exec postgres psql -U cryptopulse -d cryptopulse -f /docker-entrypoint-initdb.d/001_initial_schema.sql || true
+	@if ! command -v migrate >/dev/null 2>&1; then \
+		echo "Installing golang-migrate..."; \
+		go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest; \
+	fi
+	migrate -path $(MIGRATION_DIR) -database "postgres://cryptopulse:cryptopulse_dev@localhost:5432/cryptopulse?sslmode=disable" up
 
 .PHONY: migrate-down
 migrate-down: ## Rollback database migrations
 	@echo "Rolling back database migrations..."
-	$(DOCKER_COMPOSE) exec postgres psql -U cryptopulse -d cryptopulse -c "DROP TABLE IF EXISTS order_status_history, orders CASCADE;"
+	@if ! command -v migrate >/dev/null 2>&1; then \
+		echo "Installing golang-migrate..."; \
+		go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest; \
+	fi
+	migrate -path $(MIGRATION_DIR) -database "postgres://cryptopulse:cryptopulse_dev@localhost:5432/cryptopulse?sslmode=disable" down
+
+.PHONY: migrate-create
+migrate-create: ## Create a new migration (usage: make migrate-create NAME=migration_name)
+	@if [ -z "$(NAME)" ]; then \
+		echo "Error: NAME is required. Usage: make migrate-create NAME=migration_name"; \
+		exit 1; \
+	fi
+	@if ! command -v migrate >/dev/null 2>&1; then \
+		echo "Installing golang-migrate..."; \
+		go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest; \
+	fi
+	migrate create -ext sql -dir $(MIGRATION_DIR) -seq $(NAME)
 
 .PHONY: db-shell
 db-shell: ## Connect to database shell
@@ -191,9 +210,9 @@ setup: ## Set up development environment
 
 .PHONY: deps
 deps: ## Install development dependencies
-	go install github.com/cosmtrek/air@latest
+	go install github.com/air-verse/air@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
 # Utility targets
 .PHONY: check
