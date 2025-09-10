@@ -7,7 +7,7 @@ on:
     branches: [ main, develop ]
 
 env:
-  GO_VERSION: '1.23.2'
+  GO_VERSION: '1.25'
   DOCKER_BUILDKIT: 1
 
 jobs:
@@ -113,7 +113,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.23.2', '1.22']
+        go-version: ['1.25', '1.22']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -148,7 +148,7 @@ jobs:
           GOOS=darwin GOARCH=arm64 go build -o cryptopulse-darwin-arm64 ./cmd/main.go
 
       - name: Upload build artifacts
-        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23.2'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.25'
         uses: actions/upload-artifact@v3
         with:
           name: build-artifacts
