@@ -343,4 +343,3 @@ This updated RFC reflects the adoption of Go-Kit, detailing the project structur
 - Cosmos SDK Documentation: https://docs.cosmos.network/
 - dYdX Indexer API: https://docs.dydx.exchange/api_integration-indexer/indexer_api
 - Zap Logging: https://pkg.go.dev/go.uber.org/zap
-- 
