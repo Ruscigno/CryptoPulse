@@ -178,7 +178,7 @@ docker build -t cryptopulse:latest .
    export MNEMONIC=your-wallet-mnemonic
    
    # Deploy
-   docker-compose -f docker-compose.prod.yml up -d
+   docker compose -f docker-compose.prod.yml up -d
    ```
 
 ## Production Deployment

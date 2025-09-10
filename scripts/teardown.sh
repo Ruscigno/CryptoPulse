@@ -98,8 +98,8 @@ confirm_action() {
 stop_containers() {
     log_info "Stopping Docker containers..."
     
-    if docker-compose ps -q | grep -q .; then
-        docker-compose down
+    if docker compose ps -q | grep -q .; then
+        docker compose down
         log_success "Containers stopped"
     else
         log_info "No running containers found"
@@ -113,7 +113,7 @@ remove_volumes() {
         
         if confirm_action "Are you sure you want to remove all volumes?"; then
             log_info "Removing Docker volumes..."
-            docker-compose down -v
+            docker compose down -v
             
             # Remove any orphaned volumes
             local volumes=$(docker volume ls -q --filter name=cryptopulse)
@@ -197,7 +197,7 @@ show_status() {
     echo ""
     
     echo "Running containers:"
-    docker-compose ps 2>/dev/null || echo "  None"
+    docker compose ps 2>/dev/null || echo "  None"
     echo ""
     
     echo "Docker volumes:"

@@ -44,8 +44,9 @@ check_prerequisites() {
         missing_deps+=("docker")
     fi
     
-    if ! command_exists docker-compose; then
-        missing_deps+=("docker-compose")
+    # Check for Docker Compose (modern version)
+    if ! docker compose version >/dev/null 2>&1; then
+        missing_deps+=("docker compose (Docker Compose v2)")
     fi
     
     if ! command_exists go; then
@@ -127,15 +128,15 @@ start_services() {
     log_info "Starting development services..."
     
     # Start PostgreSQL and Redis
-    docker-compose up -d postgres redis
-    
+    docker compose up -d postgres redis
+
     # Wait for PostgreSQL to be ready
     log_info "Waiting for PostgreSQL to be ready..."
     local max_attempts=30
     local attempt=1
-    
+
     while [ $attempt -le $max_attempts ]; do
-        if docker-compose exec -T postgres pg_isready -U cryptopulse -d cryptopulse >/dev/null 2>&1; then
+        if docker compose exec -T postgres pg_isready -U cryptopulse -d cryptopulse >/dev/null 2>&1; then
             log_success "PostgreSQL is ready"
             break
         fi
@@ -155,7 +156,7 @@ start_services() {
     attempt=1
     
     while [ $attempt -le $max_attempts ]; do
-        if docker-compose exec -T redis redis-cli ping >/dev/null 2>&1; then
+        if docker compose exec -T redis redis-cli ping >/dev/null 2>&1; then
             log_success "Redis is ready"
             break
         fi
@@ -181,8 +182,8 @@ run_migrations() {
         exit 1
     fi
     
-    # Apply migrations using docker-compose
-    if docker-compose exec -T postgres psql -U cryptopulse -d cryptopulse -f /docker-entrypoint-initdb.d/001_initial_schema.sql >/dev/null 2>&1; then
+    # Apply migrations using docker compose
+    if docker compose exec -T postgres psql -U cryptopulse -d cryptopulse -f /docker-entrypoint-initdb.d/001_initial_schema.sql >/dev/null 2>&1; then
         log_success "Database migrations applied successfully"
     else
         log_warning "Migrations may have already been applied or there was an issue"
@@ -194,26 +195,26 @@ verify_setup() {
     log_info "Verifying setup..."
     
     # Check if services are running
-    if ! docker-compose ps postgres | grep -q "Up"; then
+    if ! docker compose ps postgres | grep -q "Up"; then
         log_error "PostgreSQL service is not running"
         exit 1
     fi
-    
-    if ! docker-compose ps redis | grep -q "Up"; then
+
+    if ! docker compose ps redis | grep -q "Up"; then
         log_error "Redis service is not running"
         exit 1
     fi
-    
+
     # Test database connection
-    if docker-compose exec -T postgres psql -U cryptopulse -d cryptopulse -c "SELECT 1;" >/dev/null 2>&1; then
+    if docker compose exec -T postgres psql -U cryptopulse -d cryptopulse -c "SELECT 1;" >/dev/null 2>&1; then
         log_success "Database connection test passed"
     else
         log_error "Database connection test failed"
         exit 1
     fi
-    
+
     # Test Redis connection
-    if docker-compose exec -T redis redis-cli ping >/dev/null 2>&1; then
+    if docker compose exec -T redis redis-cli ping >/dev/null 2>&1; then
         log_success "Redis connection test passed"
     else
         log_error "Redis connection test failed"

@@ -47,12 +47,12 @@ check_service_health() {
 
 # Check PostgreSQL
 check_postgres() {
-    check_service_health "PostgreSQL" "docker-compose exec -T postgres pg_isready -U cryptopulse -d cryptopulse"
+    check_service_health "PostgreSQL" "docker compose exec -T postgres pg_isready -U cryptopulse -d cryptopulse"
 }
 
 # Check Redis
 check_redis() {
-    check_service_health "Redis" "docker-compose exec -T redis redis-cli ping"
+    check_service_health "Redis" "docker compose exec -T redis redis-cli ping"
 }
 
 # Check application (if running)
@@ -72,7 +72,7 @@ check_application() {
 show_service_status() {
     log_info "Service status:"
     echo ""
-    docker-compose ps
+    docker compose ps
     echo ""
 }
 
