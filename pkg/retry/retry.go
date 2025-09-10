@@ -37,12 +37,12 @@ func DefaultRetryConfig() RetryConfig {
 type RetryableFunc func() error
 
 // RetryWithResult is a function that returns a result and can be retried
-type RetryWithResult[T any] func() (T, error)
+type RetryWithResult func() (interface{}, error)
 
 // Retry executes a function with exponential backoff retry logic
 func Retry(ctx context.Context, config RetryConfig, fn RetryableFunc) error {
 	var lastErr error
-	
+
 	for attempt := 1; attempt <= config.MaxAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
@@ -61,7 +61,7 @@ func Retry(ctx context.Context, config RetryConfig, fn RetryableFunc) error {
 		}
 
 		lastErr = err
-		
+
 		// Check if error is retryable
 		if !isRetryableError(err, config.RetryableErrors) {
 			config.Logger.Warn("Non-retryable error encountered",
@@ -97,14 +97,13 @@ func Retry(ctx context.Context, config RetryConfig, fn RetryableFunc) error {
 }
 
 // RetryWithResultFunc executes a function that returns a result with retry logic
-func RetryWithResultFunc[T any](ctx context.Context, config RetryConfig, fn RetryWithResult[T]) (T, error) {
+func RetryWithResultFunc(ctx context.Context, config RetryConfig, fn RetryWithResult) (interface{}, error) {
 	var lastErr error
-	var zeroValue T
-	
+
 	for attempt := 1; attempt <= config.MaxAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
-			return zeroValue, ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -119,13 +118,13 @@ func RetryWithResultFunc[T any](ctx context.Context, config RetryConfig, fn Retr
 		}
 
 		lastErr = err
-		
+
 		// Check if error is retryable
 		if !isRetryableError(err, config.RetryableErrors) {
 			config.Logger.Warn("Non-retryable error encountered",
 				zap.Error(err),
 				zap.Int("attempt", attempt))
-			return zeroValue, err
+			return nil, err
 		}
 
 		// Don't sleep after the last attempt
@@ -142,7 +141,7 @@ func RetryWithResultFunc[T any](ctx context.Context, config RetryConfig, fn Retr
 
 		select {
 		case <-ctx.Done():
-			return zeroValue, ctx.Err()
+			return nil, ctx.Err()
 		case <-time.After(delay):
 		}
 	}
@@ -151,25 +150,25 @@ func RetryWithResultFunc[T any](ctx context.Context, config RetryConfig, fn Retr
 		zap.Error(lastErr),
 		zap.Int("max_attempts", config.MaxAttempts))
 
-	return zeroValue, fmt.Errorf("operation failed after %d attempts: %w", config.MaxAttempts, lastErr)
+	return nil, fmt.Errorf("operation failed after %d attempts: %w", config.MaxAttempts, lastErr)
 }
 
 // calculateDelay calculates the delay for the next retry attempt
 func calculateDelay(attempt int, config RetryConfig) time.Duration {
 	// Calculate exponential backoff delay
 	delay := float64(config.InitialDelay) * math.Pow(config.BackoffFactor, float64(attempt-1))
-	
+
 	// Apply maximum delay limit
 	if delay > float64(config.MaxDelay) {
 		delay = float64(config.MaxDelay)
 	}
-	
+
 	// Add jitter if enabled
 	if config.Jitter {
 		jitter := delay * 0.1 * (rand.Float64()*2 - 1) // ±10% jitter
 		delay += jitter
 	}
-	
+
 	return time.Duration(delay)
 }
 
@@ -179,13 +178,13 @@ func isRetryableError(err error, retryableErrors []error) bool {
 		// If no specific retryable errors are defined, consider all errors retryable
 		return true
 	}
-	
+
 	for _, retryableErr := range retryableErrors {
 		if err.Error() == retryableErr.Error() {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -202,7 +201,7 @@ func IsTemporaryError(err error) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errStr := err.Error()
 	temporaryPatterns := []string{
 		"timeout",
@@ -219,13 +218,13 @@ func IsTemporaryError(err error) bool {
 		"service temporarily unavailable",
 		"gateway timeout",
 	}
-	
+
 	for _, pattern := range temporaryPatterns {
 		if containsIgnoreCase(errStr, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -258,7 +257,7 @@ func contains(s, substr string) bool {
 	if len(substr) > len(s) {
 		return false
 	}
-	
+
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
 			return true

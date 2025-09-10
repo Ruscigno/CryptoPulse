@@ -8,6 +8,7 @@ import (
 	"github.com/Ruscigno/CryptoPulse/pkg/database"
 	"github.com/Ruscigno/CryptoPulse/pkg/query"
 	"github.com/Ruscigno/CryptoPulse/pkg/repository"
+	"github.com/Ruscigno/CryptoPulse/pkg/retry"
 	"github.com/Ruscigno/CryptoPulse/pkg/tx"
 	"github.com/Ruscigno/CryptoPulse/pkg/wallet"
 	"github.com/google/uuid"
@@ -131,12 +132,14 @@ type Service interface {
 
 // service implements the Service interface
 type service struct {
-	wallet      *wallet.Wallet
-	txBuilder   *tx.TxBuilder
-	queryClient *query.QueryClient
-	orderRepo   repository.OrderRepository
-	db          *database.DB
-	logger      *zap.Logger
+	wallet         *wallet.Wallet
+	txBuilder      *tx.TxBuilder
+	queryClient    *query.QueryClient
+	orderRepo      repository.OrderRepository
+	db             *database.DB
+	logger         *zap.Logger
+	circuitBreaker *retry.CircuitBreakerManager
+	retryConfig    retry.RetryConfig
 }
 
 // NewService creates a new Service instance with all dependencies
@@ -148,13 +151,28 @@ func NewService(
 	db *database.DB,
 	logger *zap.Logger,
 ) Service {
+	// Initialize circuit breaker manager
+	circuitBreakerManager := retry.NewCircuitBreakerManager()
+
+	// Configure retry settings
+	retryConfig := retry.RetryConfig{
+		MaxAttempts:   3,
+		InitialDelay:  time.Second,
+		MaxDelay:      30 * time.Second,
+		BackoffFactor: 2.0,
+		Jitter:        true,
+		Logger:        logger,
+	}
+
 	return &service{
-		wallet:      wallet,
-		txBuilder:   txBuilder,
-		queryClient: queryClient,
-		orderRepo:   orderRepo,
-		db:          db,
-		logger:      logger,
+		wallet:         wallet,
+		txBuilder:      txBuilder,
+		queryClient:    queryClient,
+		orderRepo:      orderRepo,
+		db:             db,
+		logger:         logger,
+		circuitBreaker: circuitBreakerManager,
+		retryConfig:    retryConfig,
 	}
 }
 
@@ -207,8 +225,8 @@ func (s *service) PlaceOrder(ctx context.Context, req OrderRequest) (OrderRespon
 		GoodTilBlock: req.GoodTilBlock,
 	}
 
-	// Place order via transaction builder
-	txResponse, err := s.txBuilder.PlaceOrder(ctx, txParams)
+	// Place order via transaction builder with retry and circuit breaker
+	txResponse, err := s.placeOrderWithRetry(ctx, txParams)
 	if err != nil {
 		// Update order status to rejected
 		order.Status = repository.OrderStatusRejected
@@ -216,7 +234,7 @@ func (s *service) PlaceOrder(ctx context.Context, req OrderRequest) (OrderRespon
 		order.ErrorMessage = &errMsg
 		s.orderRepo.UpdateOrder(ctx, order)
 
-		s.logger.Error("Failed to place order", zap.Error(err))
+		s.logger.Error("Failed to place order after retries", zap.Error(err))
 		return OrderResponse{}, fmt.Errorf("failed to place order: %w", err)
 	}
 
@@ -273,4 +291,159 @@ func getTimeInForce(tif string) string {
 		return "GTT"
 	}
 	return tif
+}
+
+// isRetryableError determines if an error should be retried
+func (s *service) isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Retry on network errors, timeouts, and temporary failures
+	retryablePatterns := []string{
+		"connection refused",
+		"timeout",
+		"temporary failure",
+		"network is unreachable",
+		"no such host",
+		"context deadline exceeded",
+		"EOF",
+		"connection reset by peer",
+		"service unavailable",
+		"internal server error",
+		"bad gateway",
+		"gateway timeout",
+	}
+
+	for _, pattern := range retryablePatterns {
+		if contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					containsInner(s, substr)))
+}
+
+func containsInner(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// placeOrderWithRetry places an order with retry and circuit breaker logic
+func (s *service) placeOrderWithRetry(ctx context.Context, txParams tx.OrderParams) (*tx.TxResponse, error) {
+	// Get or create circuit breaker for transaction operations
+	cbConfig := retry.DefaultCircuitBreakerConfig("dydx-transactions")
+	cbConfig.Logger = s.logger
+	cb := s.circuitBreaker.GetOrCreate("dydx-transactions", cbConfig)
+
+	// Create retry function that returns a result
+	retryFunc := func() (interface{}, error) {
+		return s.txBuilder.PlaceOrder(ctx, txParams)
+	}
+
+	// Execute with circuit breaker
+	result, err := cb.ExecuteWithResult(ctx, func() (interface{}, error) {
+		// Execute with retry logic
+		return retry.RetryWithResultFunc(ctx, s.retryConfig, retryFunc)
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to place order with retry and circuit breaker",
+			zap.Error(err),
+			zap.String("market", txParams.Market),
+			zap.String("side", txParams.Side))
+		return nil, err
+	}
+
+	// Type assert the result
+	txResponse, ok := result.(*tx.TxResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from transaction builder")
+	}
+
+	return txResponse, nil
+}
+
+// cancelOrderWithRetry cancels an order with retry and circuit breaker logic
+func (s *service) cancelOrderWithRetry(ctx context.Context, orderID string) (*tx.TxResponse, error) {
+	// Get or create circuit breaker for transaction operations
+	cbConfig := retry.DefaultCircuitBreakerConfig("dydx-transactions")
+	cbConfig.Logger = s.logger
+	cb := s.circuitBreaker.GetOrCreate("dydx-transactions", cbConfig)
+
+	// Create retry function that returns a result
+	retryFunc := func() (interface{}, error) {
+		return s.txBuilder.CancelOrder(ctx, orderID)
+	}
+
+	// Execute with circuit breaker
+	result, err := cb.ExecuteWithResult(ctx, func() (interface{}, error) {
+		// Execute with retry logic
+		return retry.RetryWithResultFunc(ctx, s.retryConfig, retryFunc)
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to cancel order with retry and circuit breaker",
+			zap.Error(err),
+			zap.String("order_id", orderID))
+		return nil, err
+	}
+
+	// Type assert the result
+	txResponse, ok := result.(*tx.TxResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from transaction builder")
+	}
+
+	return txResponse, nil
+}
+
+// getPositionsWithRetry queries positions with retry and circuit breaker logic
+func (s *service) getPositionsWithRetry(ctx context.Context, address string) (*query.PositionsResponse, error) {
+	// Get or create circuit breaker for query operations
+	cbConfig := retry.DefaultCircuitBreakerConfig("dydx-queries")
+	cbConfig.Logger = s.logger
+	cb := s.circuitBreaker.GetOrCreate("dydx-queries", cbConfig)
+
+	// Create retry function that returns a result
+	retryFunc := func() (interface{}, error) {
+		return s.queryClient.GetPositions(ctx, address)
+	}
+
+	// Execute with circuit breaker
+	result, err := cb.ExecuteWithResult(ctx, func() (interface{}, error) {
+		// Execute with retry logic
+		return retry.RetryWithResultFunc(ctx, s.retryConfig, retryFunc)
+	})
+
+	if err != nil {
+		s.logger.Error("Failed to get positions with retry and circuit breaker",
+			zap.Error(err),
+			zap.String("address", address))
+		return nil, err
+	}
+
+	// Type assert the result
+	positionsResp, ok := result.(*query.PositionsResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type from query client")
+	}
+
+	return positionsResp, nil
 }

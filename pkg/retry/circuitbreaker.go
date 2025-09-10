@@ -36,14 +36,14 @@ func (s CircuitBreakerState) String() string {
 
 // CircuitBreakerConfig holds circuit breaker configuration
 type CircuitBreakerConfig struct {
-	Name                string        // Name for logging and metrics
-	MaxFailures         int           // Maximum failures before opening
-	ResetTimeout        time.Duration // Time to wait before transitioning to half-open
-	SuccessThreshold    int           // Successful requests needed to close from half-open
-	Timeout             time.Duration // Request timeout
-	OnStateChange       func(from, to CircuitBreakerState)
-	ShouldTrip          func(counts Counts) bool
-	Logger              *zap.Logger
+	Name             string        // Name for logging and metrics
+	MaxFailures      int           // Maximum failures before opening
+	ResetTimeout     time.Duration // Time to wait before transitioning to half-open
+	SuccessThreshold int           // Successful requests needed to close from half-open
+	Timeout          time.Duration // Request timeout
+	OnStateChange    func(from, to CircuitBreakerState)
+	ShouldTrip       func(counts Counts) bool
+	Logger           *zap.Logger
 }
 
 // DefaultCircuitBreakerConfig returns a default circuit breaker configuration
@@ -107,20 +107,18 @@ func (cb *CircuitBreaker) Execute(ctx context.Context, fn func() error) error {
 
 	// Execute the function
 	err := cb.executeWithTimeout(ctx, fn)
-	
+
 	// Record the result
 	cb.recordResult(err == nil)
-	
+
 	return err
 }
 
 // ExecuteWithResult executes a function that returns a result with circuit breaker protection
-func (cb *CircuitBreaker) ExecuteWithResult[T any](ctx context.Context, fn func() (T, error)) (T, error) {
-	var zeroValue T
-	
+func (cb *CircuitBreaker) ExecuteWithResult(ctx context.Context, fn func() (interface{}, error)) (interface{}, error) {
 	// Check if circuit breaker allows the request
 	if !cb.allowRequest() {
-		return zeroValue, fmt.Errorf("circuit breaker %s is OPEN", cb.config.Name)
+		return nil, fmt.Errorf("circuit breaker %s is OPEN", cb.config.Name)
 	}
 
 	// Create a context with timeout
@@ -132,10 +130,10 @@ func (cb *CircuitBreaker) ExecuteWithResult[T any](ctx context.Context, fn func(
 
 	// Execute the function
 	result, err := cb.executeWithTimeoutAndResult(ctx, fn)
-	
+
 	// Record the result
 	cb.recordResult(err == nil)
-	
+
 	return result, err
 }
 
@@ -224,7 +222,7 @@ func (cb *CircuitBreaker) defaultShouldTrip(counts Counts) bool {
 // executeWithTimeout executes a function with timeout handling
 func (cb *CircuitBreaker) executeWithTimeout(ctx context.Context, fn func() error) error {
 	done := make(chan error, 1)
-	
+
 	go func() {
 		done <- fn()
 	}()
@@ -238,14 +236,14 @@ func (cb *CircuitBreaker) executeWithTimeout(ctx context.Context, fn func() erro
 }
 
 // executeWithTimeoutAndResult executes a function that returns a result with timeout handling
-func (cb *CircuitBreaker) executeWithTimeoutAndResult[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+func (cb *CircuitBreaker) executeWithTimeoutAndResult(ctx context.Context, fn func() (interface{}, error)) (interface{}, error) {
 	type result struct {
-		value T
+		value interface{}
 		err   error
 	}
-	
+
 	done := make(chan result, 1)
-	
+
 	go func() {
 		value, err := fn()
 		done <- result{value: value, err: err}
@@ -255,8 +253,7 @@ func (cb *CircuitBreaker) executeWithTimeoutAndResult[T any](ctx context.Context
 	case res := <-done:
 		return res.value, res.err
 	case <-ctx.Done():
-		var zeroValue T
-		return zeroValue, ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -278,7 +275,7 @@ func (cb *CircuitBreaker) GetCounts() Counts {
 func (cb *CircuitBreaker) Reset() {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
-	
+
 	cb.setState(StateClosed)
 	cb.resetCounts()
 	cb.expiry = time.Now()
@@ -324,7 +321,7 @@ func (cbm *CircuitBreakerManager) GetOrCreate(name string, config CircuitBreaker
 func (cbm *CircuitBreakerManager) Get(name string) (*CircuitBreaker, bool) {
 	cbm.mutex.RLock()
 	defer cbm.mutex.RUnlock()
-	
+
 	cb, exists := cbm.breakers[name]
 	return cb, exists
 }
@@ -333,7 +330,7 @@ func (cbm *CircuitBreakerManager) Get(name string) (*CircuitBreaker, bool) {
 func (cbm *CircuitBreakerManager) Remove(name string) {
 	cbm.mutex.Lock()
 	defer cbm.mutex.Unlock()
-	
+
 	delete(cbm.breakers, name)
 }
 
@@ -341,7 +338,7 @@ func (cbm *CircuitBreakerManager) Remove(name string) {
 func (cbm *CircuitBreakerManager) GetAll() map[string]*CircuitBreaker {
 	cbm.mutex.RLock()
 	defer cbm.mutex.RUnlock()
-	
+
 	result := make(map[string]*CircuitBreaker)
 	for name, cb := range cbm.breakers {
 		result[name] = cb

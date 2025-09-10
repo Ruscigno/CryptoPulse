@@ -32,3 +32,4 @@ postgres-data/
 redis-data/
 prometheus-data/
 grafana-data/
+pr-description.md

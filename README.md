@@ -16,7 +16,7 @@ A high-performance Go-Kit based microservice for routing orders to the dYdX V4 d
 - **Real-time Monitoring** - Prometheus metrics, Grafana dashboards, health checks
 - **Security First** - API key authentication, rate limiting, input validation
 - **Database Integration** - PostgreSQL with order tracking and history
-- **Error Resilience** - Circuit breaker, exponential backoff, retry logic
+- **Error Resilience** - Circuit breaker pattern, exponential backoff retry with jitter
 
 ## 📋 Table of Contents
 

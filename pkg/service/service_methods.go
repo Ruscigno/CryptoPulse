@@ -13,7 +13,7 @@ import (
 
 // CancelOrder cancels an existing order
 func (s *service) CancelOrder(ctx context.Context, req CancelOrderRequest) (CancelOrderResponse, error) {
-	s.logger.Info("Canceling order", 
+	s.logger.Info("Canceling order",
 		zap.String("order_id", req.OrderID),
 		zap.String("client_id", req.ClientID))
 
@@ -42,10 +42,10 @@ func (s *service) CancelOrder(ctx context.Context, req CancelOrderRequest) (Canc
 		return CancelOrderResponse{}, fmt.Errorf("order cannot be cancelled, current status: %s", order.Status)
 	}
 
-	// Cancel order via transaction builder
-	txResponse, err := s.txBuilder.CancelOrder(ctx, order.ID.String())
+	// Cancel order via transaction builder with retry and circuit breaker
+	txResponse, err := s.cancelOrderWithRetry(ctx, order.ID.String())
 	if err != nil {
-		s.logger.Error("Failed to cancel order", zap.Error(err))
+		s.logger.Error("Failed to cancel order after retries", zap.Error(err))
 		return CancelOrderResponse{}, fmt.Errorf("failed to cancel order: %w", err)
 	}
 
@@ -66,7 +66,7 @@ func (s *service) CancelOrder(ctx context.Context, req CancelOrderRequest) (Canc
 		UpdatedAt: now.Format(time.RFC3339),
 	}
 
-	s.logger.Info("Order cancelled successfully", 
+	s.logger.Info("Order cancelled successfully",
 		zap.String("order_id", response.OrderID),
 		zap.String("tx_hash", response.TxHash))
 
@@ -83,8 +83,8 @@ func (s *service) GetPositions(ctx context.Context) (PositionsResponse, error) {
 		return PositionsResponse{}, fmt.Errorf("failed to get wallet address: %w", err)
 	}
 
-	// Query positions from dYdX indexer
-	positionsResp, err := s.queryClient.GetPositions(ctx, address)
+	// Query positions from dYdX indexer with retry and circuit breaker
+	positionsResp, err := s.getPositionsWithRetry(ctx, address)
 	if err != nil {
 		return PositionsResponse{}, fmt.Errorf("failed to get positions: %w", err)
 	}
@@ -171,7 +171,7 @@ func (s *service) ClosePosition(ctx context.Context, req ClosePositionRequest) (
 		CreatedAt: orderResp.CreatedAt,
 	}
 
-	s.logger.Info("Position close order placed", 
+	s.logger.Info("Position close order placed",
 		zap.String("market", req.Market),
 		zap.String("order_id", response.OrderID))
 
@@ -250,7 +250,7 @@ func (s *service) GetOrderStatus(ctx context.Context, orderID string) (OrderStat
 
 // GetOrderHistory retrieves order history based on filters
 func (s *service) GetOrderHistory(ctx context.Context, req OrderHistoryRequest) (OrderHistoryResponse, error) {
-	s.logger.Info("Getting order history", 
+	s.logger.Info("Getting order history",
 		zap.Any("market", req.Market),
 		zap.Any("status", req.Status),
 		zap.Int("limit", req.Limit))
