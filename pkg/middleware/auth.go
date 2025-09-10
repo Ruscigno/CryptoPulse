@@ -11,6 +11,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// Context key types to avoid collisions
+type contextKey string
+
+const (
+	userIDKey        contextKey = "user_id"
+	apiKeyKey        contextKey = "api_key"
+	authenticatedKey contextKey = "authenticated"
+	usernameKey      contextKey = "username"
+	requestIDKey     contextKey = "request_id"
+)
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
 	APIKey string
@@ -59,7 +70,7 @@ func APIKeyAuth(config AuthConfig) func(http.Handler) http.Handler {
 			}
 
 			// Add authenticated context
-			ctx := context.WithValue(r.Context(), "authenticated", true)
+			ctx := context.WithValue(r.Context(), authenticatedKey, true)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -102,8 +113,8 @@ func BasicAuth(username, password string, logger *zap.Logger) func(http.Handler)
 			}
 
 			// Add authenticated context
-			ctx := context.WithValue(r.Context(), "authenticated", true)
-			ctx = context.WithValue(ctx, "username", user)
+			ctx := context.WithValue(r.Context(), authenticatedKey, true)
+			ctx = context.WithValue(ctx, usernameKey, user)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -170,7 +181,7 @@ func RequestID() func(http.Handler) http.Handler {
 			}
 
 			w.Header().Set("X-Request-ID", requestID)
-			ctx := context.WithValue(r.Context(), "request_id", requestID)
+			ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

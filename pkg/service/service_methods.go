@@ -22,9 +22,9 @@ func (s *service) CancelOrder(ctx context.Context, req CancelOrderRequest) (Canc
 	var err error
 
 	if req.OrderID != "" {
-		orderUUID, err := uuid.Parse(req.OrderID)
-		if err != nil {
-			return CancelOrderResponse{}, fmt.Errorf("invalid order ID format: %w", err)
+		orderUUID, parseErr := uuid.Parse(req.OrderID)
+		if parseErr != nil {
+			return CancelOrderResponse{}, fmt.Errorf("invalid order ID format: %w", parseErr)
 		}
 		order, err = s.orderRepo.GetOrderByID(ctx, orderUUID)
 	} else if req.ClientID != "" {

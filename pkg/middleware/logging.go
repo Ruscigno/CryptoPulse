@@ -12,6 +12,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// Context key types for logging
+type loggingContextKey string
+
+const (
+	loggerKey        loggingContextKey = "logger"
+	requestLoggerKey loggingContextKey = "request_logger"
+)
+
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	Logger           *zap.Logger
@@ -154,7 +162,7 @@ func StructuredLogging(logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Add logger to context
-			ctx := context.WithValue(r.Context(), "logger", logger)
+			ctx := context.WithValue(r.Context(), loggerKey, logger)
 
 			// Add request metadata to logger
 			requestLogger := logger.With(
@@ -163,7 +171,7 @@ func StructuredLogging(logger *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("remote_addr", getClientIP(r)),
 			)
 
-			ctx = context.WithValue(ctx, "request_logger", requestLogger)
+			ctx = context.WithValue(ctx, requestLoggerKey, requestLogger)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

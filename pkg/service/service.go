@@ -293,58 +293,6 @@ func getTimeInForce(tif string) string {
 	return tif
 }
 
-// isRetryableError determines if an error should be retried
-func (s *service) isRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errStr := err.Error()
-
-	// Retry on network errors, timeouts, and temporary failures
-	retryablePatterns := []string{
-		"connection refused",
-		"timeout",
-		"temporary failure",
-		"network is unreachable",
-		"no such host",
-		"context deadline exceeded",
-		"EOF",
-		"connection reset by peer",
-		"service unavailable",
-		"internal server error",
-		"bad gateway",
-		"gateway timeout",
-	}
-
-	for _, pattern := range retryablePatterns {
-		if contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			len(s) > len(substr) &&
-				(s[:len(substr)] == substr ||
-					s[len(s)-len(substr):] == substr ||
-					containsInner(s, substr)))
-}
-
-func containsInner(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // placeOrderWithRetry places an order with retry and circuit breaker logic
 func (s *service) placeOrderWithRetry(ctx context.Context, txParams tx.OrderParams) (*tx.TxResponse, error) {
 	// Get or create circuit breaker for transaction operations
