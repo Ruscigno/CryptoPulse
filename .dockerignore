@@ -1,0 +1,90 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Development files
+.env
+.env.local
+.env.development
+.env.staging
+.air.toml
+tmp/
+build-errors.log
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test files and coverage
+tests/
+*_test.go
+coverage.out
+coverage.html
+test-results/
+
+# Build artifacts
+bin/
+dist/
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker files (except the one being built)
+Dockerfile.dev
+docker-compose.yml
+docker-compose.*.yml
+
+# Scripts (unless needed in production)
+scripts/setup.sh
+scripts/teardown.sh
+scripts/health-check.sh
+
+# Kubernetes manifests
+k8s/
+kubernetes/
+helm/
+
+# CI/CD files
+.github/
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Backup files
+*.bak
+*.backup

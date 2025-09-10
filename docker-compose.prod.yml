@@ -1,0 +1,293 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: cryptopulse:prod
+    container_name: cryptopulse-prod
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Server Configuration
+      - PORT=8080
+      - LOG_LEVEL=warn
+      - LOG_FORMAT=json
+      - ENVIRONMENT=production
+      
+      # Database Configuration
+      - DATABASE_URL=postgres://cryptopulse:${DB_PASSWORD}@postgres:5432/cryptopulse?sslmode=require
+      - DATABASE_MAX_OPEN_CONNS=50
+      - DATABASE_MAX_IDLE_CONNS=10
+      - DATABASE_CONN_MAX_LIFETIME=5m
+      
+      # dYdX Configuration (Mainnet for production)
+      - DYDX_NETWORK=mainnet
+      - INDEXER_URL=https://indexer.dydx.trade
+      - RPC_URL=https://dydx-rpc.kingnodes.com:443
+      - CHAIN_ID=dydx-mainnet-1
+      
+      # Wallet Configuration
+      - MNEMONIC=${MNEMONIC}
+      - WALLET_HD_PATH=m/44'/118'/0'/0/0
+      
+      # Security Configuration
+      - API_KEY=${API_KEY}
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=1000
+      - RATE_LIMIT_BURST=100
+      - REQUEST_TIMEOUT=30s
+      - MAX_REQUEST_SIZE=1MB
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://app.cryptopulse.com}
+      
+      # Monitoring Configuration
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_INTERVAL=30s
+      
+      # Circuit Breaker Configuration
+      - CIRCUIT_BREAKER_ENABLED=true
+      - CIRCUIT_BREAKER_MAX_FAILURES=3
+      - CIRCUIT_BREAKER_RESET_TIMEOUT=60s
+      
+      # Retry Configuration
+      - RETRY_ENABLED=true
+      - RETRY_MAX_ATTEMPTS=3
+      - RETRY_INITIAL_DELAY=1s
+      - RETRY_MAX_DELAY=30s
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    networks:
+      - cryptopulse-prod
+    
+    volumes:
+      - app-logs:/app/logs
+    
+    healthcheck:
+      test: ["CMD", "./cryptopulse", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: cryptopulse-postgres-prod
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=cryptopulse
+      - POSTGRES_USER=cryptopulse
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./pkg/database/migrations:/docker-entrypoint-initdb.d:ro
+      - ./backups:/backups
+    
+    networks:
+      - cryptopulse-prod
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptopulse -d cryptopulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Backup configuration
+    labels:
+      - "backup.enable=true"
+      - "backup.schedule=0 2 * * *"  # Daily at 2 AM
+
+  redis:
+    image: redis:7-alpine
+    container_name: cryptopulse-redis-prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    
+    volumes:
+      - redis-data:/data
+    
+    networks:
+      - cryptopulse-prod
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Production monitoring stack
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cryptopulse-prometheus-prod
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    
+    volumes:
+      - ./monitoring/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    
+    networks:
+      - cryptopulse-prod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cryptopulse-grafana-prod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_COOKIE_SAMESITE=strict
+    
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    
+    networks:
+      - cryptopulse-prod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: cryptopulse-loki-prod
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    
+    networks:
+      - cryptopulse-prod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # Reverse proxy and SSL termination
+  nginx:
+    image: nginx:alpine
+    container_name: cryptopulse-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    
+    depends_on:
+      - app
+    
+    networks:
+      - cryptopulse-prod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+networks:
+  cryptopulse-prod:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  app-logs:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
+  nginx-logs:
+    driver: local

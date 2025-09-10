@@ -1,0 +1,216 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.preprod
+    image: cryptopulse:preprod
+    container_name: cryptopulse-preprod
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Server Configuration
+      - PORT=8080
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - ENVIRONMENT=preprod
+      
+      # Database Configuration
+      - DATABASE_URL=postgres://cryptopulse:${DB_PASSWORD:-cryptopulse_preprod}@postgres:5432/cryptopulse?sslmode=require
+      - DATABASE_MAX_OPEN_CONNS=25
+      - DATABASE_MAX_IDLE_CONNS=5
+      - DATABASE_CONN_MAX_LIFETIME=5m
+      
+      # dYdX Configuration (Testnet for preprod)
+      - DYDX_NETWORK=testnet
+      - INDEXER_URL=https://indexer.v4testnet.dydx.exchange
+      - RPC_URL=https://test-dydx-rpc.kingnodes.com:443
+      - CHAIN_ID=dydx-testnet-4
+      
+      # Wallet Configuration
+      - MNEMONIC=${MNEMONIC}
+      - WALLET_HD_PATH=m/44'/118'/0'/0/0
+      
+      # Security Configuration
+      - API_KEY=${API_KEY}
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=200
+      - RATE_LIMIT_BURST=50
+      - REQUEST_TIMEOUT=30s
+      - MAX_REQUEST_SIZE=2MB
+      
+      # Monitoring Configuration
+      - METRICS_ENABLED=true
+      - HEALTH_CHECK_INTERVAL=30s
+      
+      # Circuit Breaker Configuration
+      - CIRCUIT_BREAKER_ENABLED=true
+      - CIRCUIT_BREAKER_MAX_FAILURES=5
+      - CIRCUIT_BREAKER_RESET_TIMEOUT=60s
+      
+      # Retry Configuration
+      - RETRY_ENABLED=true
+      - RETRY_MAX_ATTEMPTS=3
+      - RETRY_INITIAL_DELAY=1s
+      - RETRY_MAX_DELAY=30s
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    
+    networks:
+      - cryptopulse-preprod
+    
+    volumes:
+      - app-logs:/app/logs
+    
+    healthcheck:
+      test: ["CMD", "./cryptopulse", "--health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: cryptopulse-postgres-preprod
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=cryptopulse
+      - POSTGRES_USER=cryptopulse
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-cryptopulse_preprod}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./pkg/database/migrations:/docker-entrypoint-initdb.d:ro
+    
+    networks:
+      - cryptopulse-preprod
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptopulse -d cryptopulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  redis:
+    image: redis:7-alpine
+    container_name: cryptopulse-redis-preprod
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_preprod}
+    
+    volumes:
+      - redis-data:/data
+    
+    networks:
+      - cryptopulse-preprod
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # Monitoring stack for preprod
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cryptopulse-prometheus-preprod
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    
+    networks:
+      - cryptopulse-preprod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cryptopulse-grafana-preprod
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin_preprod}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    
+    networks:
+      - cryptopulse-preprod
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  cryptopulse-preprod:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  app-logs:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

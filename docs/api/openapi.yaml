@@ -1,0 +1,615 @@
+openapi: 3.0.3
+info:
+  title: dYdX Order Routing Service API
+  description: |
+    A Go-Kit based microservice for routing orders to the dYdX V4 exchange.
+    
+    This service provides a simplified interface for placing orders, managing positions,
+    and monitoring order status on the dYdX decentralized exchange.
+    
+    ## Authentication
+    All endpoints require API key authentication via the `X-API-Key` header.
+    
+    ## Rate Limiting
+    API requests are rate limited to prevent abuse. Default limits:
+    - 100 requests per minute per API key
+    - Burst capacity of 20 requests
+    
+    ## Error Handling
+    The API uses standard HTTP status codes and returns detailed error information
+    in JSON format for all error responses.
+  version: 1.0.0
+  contact:
+    name: CryptoPulse Team
+    email: support@cryptopulse.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.cryptopulse.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the service and its dependencies
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/orders:
+    post:
+      summary: Place a new order
+      description: Places a new order on the dYdX exchange
+      operationId: placeOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        '201':
+          description: Order placed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/orders/{orderId}/cancel:
+    post:
+      summary: Cancel an order
+      description: Cancels an existing order on the dYdX exchange
+      operationId: cancelOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: The ID of the order to cancel
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrderResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/orders/{orderId}:
+    get:
+      summary: Get order status
+      description: Retrieves the current status and details of an order
+      operationId: getOrderStatus
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: The ID of the order to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/orders:
+    get:
+      summary: Get order history
+      description: Retrieves order history with optional filtering
+      operationId: getOrderHistory
+      parameters:
+        - name: market
+          in: query
+          description: Filter by market (e.g., BTC-USD)
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by order status
+          schema:
+            type: string
+            enum: [PENDING, OPEN, FILLED, CANCELLED, REJECTED]
+        - name: limit
+          in: query
+          description: Maximum number of orders to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of orders to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Order history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderHistoryResponse'
+
+  /api/v1/positions:
+    get:
+      summary: Get current positions
+      description: Retrieves all current positions from the dYdX exchange
+      operationId: getPositions
+      responses:
+        '200':
+          description: Positions retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionsResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/positions/{market}/close:
+    post:
+      summary: Close a position
+      description: Places a market order to close the entire position in the specified market
+      operationId: closePosition
+      parameters:
+        - name: market
+          in: path
+          required: true
+          description: The market of the position to close (e.g., BTC-USD)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Position close order placed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClosePositionResponse'
+        '404':
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    OrderRequest:
+      type: object
+      required:
+        - market
+        - side
+        - type
+        - size
+      properties:
+        market:
+          type: string
+          description: Trading pair (e.g., BTC-USD, ETH-USD)
+          example: "BTC-USD"
+        side:
+          type: string
+          enum: [BUY, SELL]
+          description: Order side
+          example: "BUY"
+        type:
+          type: string
+          enum: [MARKET, LIMIT]
+          description: Order type
+          example: "LIMIT"
+        size:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: Order size in base asset units
+          example: 1.5
+        price:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: Order price (required for LIMIT orders)
+          example: 50000.0
+        timeInForce:
+          type: string
+          enum: [GTT, FOK, IOC]
+          description: Time in force (Good Till Time, Fill or Kill, Immediate or Cancel)
+          default: "GTT"
+          example: "GTT"
+        goodTilBlock:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Block number until which the order is valid (for GTT orders)
+          example: 12345678
+
+    OrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          description: Unique order identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        clientId:
+          type: string
+          description: Client-generated order identifier
+          example: "client-order-123"
+        status:
+          type: string
+          description: Current order status
+          example: "open"
+        txHash:
+          type: string
+          description: Transaction hash on the blockchain
+          example: "0x1234567890abcdef"
+        message:
+          type: string
+          description: Status message
+          example: "Order placed successfully"
+        createdAt:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+          example: "2024-01-15T10:30:00Z"
+
+    CancelOrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          description: Unique order identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          description: Updated order status
+          example: "cancelled"
+        txHash:
+          type: string
+          description: Cancellation transaction hash
+          example: "0xabcdef1234567890"
+        message:
+          type: string
+          description: Status message
+          example: "Order cancelled successfully"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Order update timestamp
+          example: "2024-01-15T10:35:00Z"
+
+    OrderStatusResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          description: Unique order identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        clientId:
+          type: string
+          description: Client-generated order identifier
+          example: "client-order-123"
+        status:
+          type: string
+          enum: [PENDING, OPEN, FILLED, PARTIALLY_FILLED, CANCELLED, REJECTED]
+          description: Current order status
+          example: "open"
+        market:
+          type: string
+          description: Trading pair
+          example: "BTC-USD"
+        side:
+          type: string
+          enum: [BUY, SELL]
+          description: Order side
+          example: "BUY"
+        size:
+          type: string
+          description: Original order size
+          example: "1.5"
+        filledSize:
+          type: string
+          description: Amount filled
+          example: "0.5"
+        remainingSize:
+          type: string
+          description: Amount remaining
+          example: "1.0"
+        price:
+          type: string
+          description: Order price (null for market orders)
+          example: "50000.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-15T10:35:00Z"
+        history:
+          type: array
+          description: Order status change history
+          items:
+            $ref: '#/components/schemas/OrderStatusHistoryItem'
+
+    OrderStatusHistoryItem:
+      type: object
+      properties:
+        oldStatus:
+          type: string
+          description: Previous status
+          example: "open"
+        newStatus:
+          type: string
+          description: New status
+          example: "partially_filled"
+        timestamp:
+          type: string
+          format: date-time
+          description: Change timestamp
+          example: "2024-01-15T10:32:00Z"
+        reason:
+          type: string
+          description: Reason for status change
+          example: "Partial fill executed"
+
+    OrderHistoryResponse:
+      type: object
+      properties:
+        orders:
+          type: array
+          description: List of orders
+          items:
+            $ref: '#/components/schemas/OrderStatusResponse'
+        total:
+          type: integer
+          description: Total number of orders matching the filter
+          example: 150
+
+    PositionsResponse:
+      type: object
+      properties:
+        positions:
+          type: array
+          description: List of current positions
+          items:
+            $ref: '#/components/schemas/Position'
+
+    Position:
+      type: object
+      properties:
+        market:
+          type: string
+          description: Trading pair
+          example: "BTC-USD"
+        side:
+          type: string
+          enum: [LONG, SHORT]
+          description: Position side
+          example: "LONG"
+        size:
+          type: string
+          description: Position size
+          example: "1.5"
+        entryPrice:
+          type: string
+          description: Average entry price
+          example: "50000.0"
+        unrealizedPnl:
+          type: string
+          description: Unrealized profit/loss
+          example: "1000.0"
+        realizedPnl:
+          type: string
+          description: Realized profit/loss
+          example: "500.0"
+        createdAt:
+          type: string
+          format: date-time
+          description: Position creation timestamp
+          example: "2024-01-15T09:00:00Z"
+
+    ClosePositionResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          description: ID of the order placed to close the position
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        market:
+          type: string
+          description: Trading pair
+          example: "BTC-USD"
+        status:
+          type: string
+          description: Order status
+          example: "open"
+        txHash:
+          type: string
+          description: Transaction hash
+          example: "0x1234567890abcdef"
+        message:
+          type: string
+          description: Status message
+          example: "Position close order placed successfully"
+        createdAt:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+          example: "2024-01-15T10:40:00Z"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Overall health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-01-15T10:45:00Z"
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"
+        uptime:
+          type: string
+          description: Service uptime
+          example: "2h30m15s"
+        components:
+          type: array
+          description: Health status of individual components
+          items:
+            $ref: '#/components/schemas/ComponentHealth'
+
+    ComponentHealth:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Component name
+          example: "database"
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Component health status
+          example: "healthy"
+        message:
+          type: string
+          description: Health status message
+          example: "Database is responsive"
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+          example: "2024-01-15T10:45:00Z"
+        duration:
+          type: string
+          description: Check duration
+          example: "5ms"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+          example: "error"
+        code:
+          type: string
+          description: Error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid order request"
+        details:
+          type: string
+          description: Additional error details
+          example: "Market field is required"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-15T10:45:00Z"
+        requestId:
+          type: string
+          description: Request ID for tracking
+          example: "req-123e4567-e89b-12d3"
+        metadata:
+          type: object
+          description: Additional error metadata
+          additionalProperties: true
