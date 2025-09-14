@@ -221,6 +221,34 @@ INTEGRATION_TESTS=true make test-integration
 ### dYdX Testnet Testing
 Follow the comprehensive [dYdX Testing Guide](docs/dydx-testing.md) for real testnet validation.
 
+#### Testnet Faucet Utility
+Request testnet funds easily:
+```bash
+# Install faucet dependencies
+make faucet-install
+
+# Add your dYdX address to .env.local
+echo "DYDX_ADDRESS=dydx1your_address_here" >> .env.local
+
+# Request testnet funds (reads address from .env.local)
+make faucet
+
+# If SSL certificate error occurs, use curl workaround
+make faucet-curl
+
+# Or open web faucet in browser
+make faucet-web
+
+# Check current address
+make faucet-address
+
+# Override address for one-time use
+make faucet DYDX_ADDRESS=dydx1different_address
+
+# Show faucet help
+make faucet-help
+```
+
 ## 🚀 Deployment
 
 ### Development

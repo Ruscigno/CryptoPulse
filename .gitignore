@@ -34,3 +34,4 @@ prometheus-data/
 grafana-data/
 pr-description.md
 changes.diff
+scripts/obtain-testnet-funds-via-faucet/node_modules/
