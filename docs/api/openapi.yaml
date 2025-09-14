@@ -318,7 +318,7 @@ components:
         status:
           type: string
           description: Current order status
-          example: "open"
+          example: "OPEN"
         txHash:
           type: string
           description: Transaction hash on the blockchain
@@ -387,7 +387,7 @@ components:
           type: string
           enum: [PENDING, OPEN, FILLED, PARTIALLY_FILLED, CANCELLED, REJECTED]
           description: Current order status
-          example: "open"
+          example: "OPEN"
         market:
           type: string
           description: Trading pair
@@ -435,11 +435,11 @@ components:
         oldStatus:
           type: string
           description: Previous status
-          example: "open"
+          example: "OPEN"
         newStatus:
           type: string
           description: New status
-          example: "partially_filled"
+          example: "PARTIALLY_FILLED"
         timestamp:
           type: string
           format: date-time
@@ -531,7 +531,7 @@ components:
         status:
           type: string
           description: Order status
-          example: "open"
+          example: "OPEN"
         txHash:
           type: string
           description: Transaction hash

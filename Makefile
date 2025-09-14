@@ -136,6 +136,11 @@ test-e2e: ## Run end-to-end tests
 	@echo "Running end-to-end tests..."
 	E2E_TESTS=true go test -v ./tests/e2e/...
 
+.PHONY: test-openapi-contract
+test-openapi-contract: ## Run OpenAPI contract tests
+	@echo "Running OpenAPI contract tests..."
+	@./scripts/test-openapi-contract.sh
+
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage
 	@echo "Running tests with coverage..."
@@ -147,18 +152,18 @@ test-coverage: ## Run tests with coverage
 test-all: ## Run all tests
 	@echo "Running unit tests..."
 	go test -v ./tests/unit/...
-	@echo "Running integration tests (if INTEGRATION_TESTS=true)..."
 	@if [ "$$INTEGRATION_TESTS" = "true" ]; then \
 		go test -v ./tests/integration/...; \
 	else \
 		echo "Skipping integration tests (set INTEGRATION_TESTS=true to run)"; \
 	fi
-	@echo "Running end-to-end tests (if E2E_TESTS=true)..."
 	@if [ "$$E2E_TESTS" = "true" ]; then \
 		go test -v ./tests/e2e/...; \
 	else \
 		echo "Skipping e2e tests (set E2E_TESTS=true to run)"; \
 	fi
+	@echo "Running OpenAPI contract tests..."
+	@./scripts/test-openapi-contract.sh
 
 # Code Quality
 .PHONY: lint
