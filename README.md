@@ -41,7 +41,7 @@ A high-performance Go-Kit based microservice for routing orders to the dYdX V4 d
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/Ruscigno/stock-screener.git
+git clone git@github.com:Ruscigno/CryptoPulse.git
 cd CryptoPulse
 
 # Start development environment
@@ -73,15 +73,14 @@ cp .env.example .env.local
 curl http://localhost:8080/health
 
 # Place a test order (requires API key)
-curl -X POST http://localhost:8080/api/v1/orders \
+curl -X POST http://localhost:8080/place-order \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
-    "clientId": "test-order-001",
     "market": "BTC-USD",
     "side": "BUY",
     "type": "MARKET",
-    "size": "0.001"
+    "size": 0.001
   }'
 ```
 
@@ -110,6 +109,9 @@ Built using Go-Kit microservice patterns:
 - **Repository Layer** (`pkg/repository/`) - Database operations
 - **Wallet Layer** (`pkg/wallet/`) - Crypto wallet and key management
 - **Transaction Layer** (`pkg/tx/`) - dYdX blockchain integration
+- **Query Layer** (`pkg/query/`) - dYdX chain and indexer queries
+- **Middleware Layer** (`pkg/middleware/`) - Security, logging, and validation
+- **Health Service** (`pkg/service/health.go`) - Comprehensive health monitoring
 
 ## 🔌 API Endpoints
 
@@ -117,17 +119,17 @@ Built using Go-Kit microservice patterns:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/orders` | Place a new order |
-| DELETE | `/api/v1/orders/{id}` | Cancel an order |
-| GET | `/api/v1/orders/{id}` | Get order status |
-| GET | `/api/v1/orders` | Get order history |
+| POST | `/place-order` | Place a new order |
+| POST | `/cancel-order` | Cancel an order |
+| GET | `/orders/{id}` | Get order status |
+| GET | `/order-history` | Get order history |
 
 ### Position Management
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/positions` | Get all positions |
-| POST | `/api/v1/positions/{market}/close` | Close a position |
+| GET | `/positions` | Get all positions |
+| POST | `/close-position` | Close a position |
 
 ### System
 
@@ -140,12 +142,11 @@ Built using Go-Kit microservice patterns:
 
 ```json
 {
-  "clientId": "unique-order-id",
   "market": "BTC-USD",
   "side": "BUY",
   "type": "LIMIT",
-  "size": "0.001",
-  "price": "45000.0",
+  "size": 0.001,
+  "price": 45000.0,
   "timeInForce": "GTT",
   "goodTilBlock": 1000000
 }
@@ -185,18 +186,23 @@ make docker-build    # Build Docker image
 
 ### Project Structure
 
-```
+```text
 ├── cmd/main.go              # Application entry point
 ├── pkg/
-│   ├── service/            # Business logic
+│   ├── service/            # Business logic and health monitoring
 │   ├── endpoint/           # Go-Kit endpoints
-│   ├── transport/          # HTTP transport
-│   ├── repository/         # Database layer
-│   ├── wallet/             # Wallet management
-│   ├── tx/                 # Transaction building
-│   └── middleware/         # HTTP middleware
-├── docs/                   # Documentation
-├── tests/                  # Test suites
+│   ├── transport/          # HTTP transport layer
+│   ├── repository/         # Database operations
+│   ├── wallet/             # Wallet management and signing
+│   ├── tx/                 # Transaction building and broadcasting
+│   ├── query/              # dYdX chain and indexer queries
+│   ├── middleware/         # Security, logging, validation
+│   ├── database/           # Database connection and migrations
+│   ├── config/             # Configuration management
+│   └── retry/              # Circuit breaker and retry logic
+├── docs/                   # Comprehensive documentation
+├── tests/                  # Unit, integration, and E2E tests
+├── scripts/                # Deployment and utility scripts
 └── docker-compose.yml      # Development environment
 ```
 
@@ -275,7 +281,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- **Issues**: [GitHub Issues](https://github.com/Ruscigno/stock-screener/issues)
+- **Issues**: [GitHub Issues](https://github.com/Ruscigno/CryptoPulse/issues)
 - **Documentation**: [docs/](docs/)
 - **Testing**: [docs/dydx-testing.md](docs/dydx-testing.md)
 

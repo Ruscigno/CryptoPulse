@@ -18,10 +18,11 @@ The service reads configuration from multiple sources in the following order of 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PORT` | string | `8080` | HTTP server port |
-| `HOST` | string | `0.0.0.0` | HTTP server bind address |
+| `HTTP_PORT` | string | `:8080` | HTTP server port with colon prefix |
 | `LOG_LEVEL` | string | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
-| `LOG_FORMAT` | string | `text` | Log format (`text`, `json`) |
+| `LOG_FORMAT` | string | `json` | Log format (`text`, `json`) |
 | `LOG_OUTPUT` | string | `stdout` | Log output destination |
+| `ENVIRONMENT` | string | `development` | Environment (`development`, `preprod`, `production`) |
 | `SHUTDOWN_TIMEOUT` | duration | `30s` | Graceful shutdown timeout |
 | `READ_TIMEOUT` | duration | `30s` | HTTP read timeout |
 | `WRITE_TIMEOUT` | duration | `30s` | HTTP write timeout |
@@ -48,6 +49,7 @@ The service reads configuration from multiple sources in the following order of 
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
+| `DYDX_NETWORK` | string | `testnet` | Network type (`testnet`, `mainnet`) |
 | `DYDX_NETWORK` | string | `testnet` | Network environment (`testnet`, `mainnet`) |
 | `INDEXER_URL` | string | `https://indexer.v4testnet.dydx.exchange` | dYdX Indexer API URL |
 | `RPC_URL` | string | `https://test-dydx-rpc.kingnodes.com:443` | Cosmos RPC endpoint |

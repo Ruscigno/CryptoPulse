@@ -45,8 +45,14 @@ CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
 -- Order side enumeration
 CREATE TYPE order_side AS ENUM ('BUY', 'SELL');
 
--- Order type enumeration  
-CREATE TYPE order_type AS ENUM ('MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT');
+-- Order type enumeration
+CREATE TYPE order_type AS ENUM ('MARKET', 'LIMIT', 'STOP_MARKET', 'STOP_LIMIT', 'TAKE_PROFIT_MARKET', 'TAKE_PROFIT_LIMIT');
+
+-- Order status enumeration
+CREATE TYPE order_status AS ENUM ('PENDING', 'OPEN', 'FILLED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'PARTIALLY_FILLED');
+
+-- Time in force enumeration
+CREATE TYPE time_in_force AS ENUM ('GTT', 'FOK', 'IOC');
 
 -- Order status enumeration
 CREATE TYPE order_status AS ENUM (

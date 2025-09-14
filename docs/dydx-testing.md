@@ -16,10 +16,11 @@ This guide provides detailed instructions for testing the dYdX Order Routing Ser
 
 ### System Requirements
 
-- Go 1.23+
+- Go 1.25+
 - Docker and Docker Compose
 - curl or Postman for API testing
 - Git
+- Make
 
 ### dYdX V4 Testnet Information
 

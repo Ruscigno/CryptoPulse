@@ -1,33 +1,59 @@
 # dYdX Order Routing Service - Deployment Guide
 
-This guide covers the deployment of the dYdX Order Routing Service MVP in various environments.
+This guide covers deployment of the dYdX Order Routing Service to preprod and production environments using Docker.
 
-## Table of Contents
+## Quick Start
 
-- [Prerequisites](#prerequisites)
-- [Environment Configuration](#environment-configuration)
-- [Local Development](#local-development)
-- [Docker Deployment](#docker-deployment)
-- [Production Deployment](#production-deployment)
-- [Monitoring and Logging](#monitoring-and-logging)
-- [Troubleshooting](#troubleshooting)
+### Prerequisites
 
-## Prerequisites
+- Docker 20.10+
+- Docker Compose 2.0+
+- Make
+- Git
 
-### System Requirements
+### Environment Setup
 
-- **Go**: Version 1.21 or higher
-- **Docker**: Version 20.10 or higher
-- **Docker Compose**: Version 2.0 or higher
-- **PostgreSQL**: Version 14 or higher
-- **Redis**: Version 6.0 or higher (optional, for caching)
+1. **Preprod Deployment**:
+   ```bash
+   # Copy and configure environment
+   cp .env.preprod.example .env.preprod
+   # Edit .env.preprod with your testnet configuration
 
-### External Dependencies
+   # Deploy
+   make deploy-preprod
+   ```
 
-- **dYdX V4 Network Access**: 
-  - Testnet: `https://indexer.v4testnet.dydx.exchange`
-  - Mainnet: `https://indexer.dydx.trade`
-- **Cosmos SDK Compatible Wallet**: BIP39 mnemonic phrase required
+2. **Production Deployment**:
+   ```bash
+   # Copy and configure environment
+   cp .env.prod.example .env.prod
+   # Edit .env.prod with your mainnet configuration
+
+   # Deploy (with confirmation prompt)
+   make deploy-prod
+   ```
+
+## Docker Images
+
+### Development (`Dockerfile.dev`)
+- Based on `golang:1.25-alpine`
+- Includes Air for hot reloading
+- Debug symbols enabled
+- Suitable for local development
+
+### Preprod (`Dockerfile.preprod`)
+- Multi-stage build with Alpine Linux
+- Race detection enabled
+- Optimized for testing and validation
+- Includes debugging capabilities
+- Non-root user for security
+
+### Production (`Dockerfile.prod`)
+- Multi-stage build with distroless base
+- Static binary compilation
+- Maximum security and minimal attack surface
+- No shell or package manager
+- Optimized for performance and security
 
 ## Environment Configuration
 

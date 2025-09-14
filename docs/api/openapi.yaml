@@ -56,7 +56,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
-  /api/v1/orders:
+  /place-order:
     post:
       summary: Place a new order
       description: Places a new order on the dYdX exchange
@@ -99,19 +99,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/orders/{orderId}/cancel:
+  /cancel-order:
     post:
       summary: Cancel an order
       description: Cancels an existing order on the dYdX exchange
       operationId: cancelOrder
-      parameters:
-        - name: orderId
-          in: path
-          required: true
-          description: The ID of the order to cancel
-          schema:
-            type: string
-            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelOrderRequest'
       responses:
         '200':
           description: Order cancelled successfully
@@ -132,7 +130,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/orders/{orderId}:
+  /orders/{orderId}:
     get:
       summary: Get order status
       description: Retrieves the current status and details of an order
@@ -144,7 +142,6 @@ paths:
           description: The ID of the order to retrieve
           schema:
             type: string
-            format: uuid
       responses:
         '200':
           description: Order status retrieved successfully
@@ -159,7 +156,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/orders:
+  /order-history:
     get:
       summary: Get order history
       description: Retrieves order history with optional filtering
@@ -199,7 +196,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderHistoryResponse'
 
-  /api/v1/positions:
+  /positions:
     get:
       summary: Get current positions
       description: Retrieves all current positions from the dYdX exchange
@@ -218,18 +215,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/positions/{market}/close:
+  /close-position:
     post:
       summary: Close a position
       description: Places a market order to close the entire position in the specified market
       operationId: closePosition
-      parameters:
-        - name: market
-          in: path
-          required: true
-          description: The market of the position to close (e.g., BTC-USD)
-          schema:
-            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosePositionRequest'
       responses:
         '200':
           description: Position close order placed successfully
@@ -336,6 +332,18 @@ components:
           format: date-time
           description: Order creation timestamp
           example: "2024-01-15T10:30:00Z"
+
+    CancelOrderRequest:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Order ID to cancel (either orderId or clientId required)
+          example: "dydx-order-123"
+        clientId:
+          type: string
+          description: Client ID to cancel (either orderId or clientId required)
+          example: "client-order-123"
 
     CancelOrderResponse:
       type: object
@@ -497,6 +505,16 @@ components:
           format: date-time
           description: Position creation timestamp
           example: "2024-01-15T09:00:00Z"
+
+    ClosePositionRequest:
+      type: object
+      required:
+        - market
+      properties:
+        market:
+          type: string
+          description: Market to close position for (e.g., BTC-USD)
+          example: "BTC-USD"
 
     ClosePositionResponse:
       type: object
