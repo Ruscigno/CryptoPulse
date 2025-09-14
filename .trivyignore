@@ -1,0 +1,15 @@
+# Trivy Ignore File
+# This file contains vulnerabilities that should be ignored during security scanning
+
+# Test-only dependencies - these are not included in production builds
+# CVE-2025-30153: Data Amplification vulnerability in kin-openapi
+# This library is only used in tests/api/ for OpenAPI contract validation
+# and is not included in the production binary or Docker images
+CVE-2025-30153
+
+# Additional test-only dependency ignores can be added here
+# Format: CVE-YYYY-NNNNN
+# Reason: Brief explanation of why it's safe to ignore
+
+# Example patterns for future test-only vulnerabilities:
+# CVE-YYYY-NNNNN  # Test dependency: library-name - only used in tests/

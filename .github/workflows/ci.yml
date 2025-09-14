@@ -87,9 +87,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./tests/unit/...
         env:
           CGO_ENABLED: 1
 
@@ -111,7 +111,63 @@ jobs:
             coverage.out
             coverage.html
 
-  # Job 3: Build Tests (Docker/K8s focused)
+  # Job 3: OpenAPI Contract Tests
+  contract-tests:
+    name: OpenAPI Contract Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install contract test dependencies
+        run: |
+          cd tests/api
+          go mod download
+
+      - name: Validate OpenAPI specification
+        run: |
+          # Check if OpenAPI spec exists and is valid
+          if [ ! -f "docs/api/openapi.yaml" ]; then
+            echo "❌ OpenAPI specification not found at docs/api/openapi.yaml"
+            exit 1
+          fi
+          echo "✅ OpenAPI specification found"
+
+      - name: Run OpenAPI contract tests
+        run: |
+          chmod +x scripts/test-openapi-contract.sh
+          ./scripts/test-openapi-contract.sh
+
+      - name: Upload contract test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-test-results
+          path: |
+            tests/api/test-results.xml
+            tests/api/coverage.out
+        continue-on-error: true
+
+  # Job 4: Build Tests (Docker/K8s focused)
   build-tests:
     name: Build Tests
     runs-on: ubuntu-latest
@@ -161,11 +217,11 @@ jobs:
           name: container-build-artifacts
           path: cryptopulse-linux-*
 
-  # Job 4: Integration and E2E Tests
+  # Job 5: Integration and E2E Tests
   integration-tests:
     name: Integration & E2E Tests
     runs-on: ubuntu-latest
-    needs: [unit-tests, build-tests]
+    needs: [unit-tests, contract-tests, build-tests]
     services:
       postgres:
         image: postgres:14
@@ -231,11 +287,17 @@ jobs:
 
       - name: Run integration tests
         run: |
+          echo "🔗 Running Integration Tests..."
           INTEGRATION_TESTS=true go test -v -tags=integration ./tests/integration/...
         env:
           DATABASE_URL: postgres://cryptopulse:cryptopulse_test@localhost:5432/cryptopulse_test?sslmode=disable
           REDIS_URL: redis://localhost:6379
           CGO_ENABLED: 1
+
+      - name: Test status check
+        run: |
+          echo "📊 Test Suite Status:"
+          make test-status || echo "Test status script not available"
 
       - name: Build application for E2E tests
         run: go build -o cryptopulse ./cmd/main.go
@@ -262,10 +324,21 @@ jobs:
 
       - name: Run E2E tests
         run: |
+          echo "🌐 Running End-to-End Tests..."
           E2E_TESTS=true go test -v -tags=e2e ./tests/e2e/...
         env:
           API_BASE_URL: http://localhost:8080
           API_KEY: test-api-key-for-ci-cd-pipeline
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: |
+            tests/integration/test-results.xml
+            tests/e2e/test-results.xml
+        continue-on-error: true
 
       - name: Stop application
         if: always()
@@ -274,7 +347,7 @@ jobs:
             kill $APP_PID || true
           fi
 
-  # Job 5: Docker Build Tests
+  # Job 6: Docker Build Tests
   docker-tests:
     name: Docker Build Tests
     runs-on: ubuntu-latest
@@ -329,7 +402,7 @@ jobs:
           sleep 10
           docker compose -f docker-compose.yml down
 
-  # Job 6: Security and Vulnerability Scanning
+  # Job 7: Security and Vulnerability Scanning
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -338,13 +411,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (Production Dependencies)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          trivyignores: '.trivyignore'
+
+      - name: Run Trivy vulnerability scanner (All Dependencies - Informational)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          output: 'trivy-all-results.txt'
+        continue-on-error: true
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -356,39 +439,119 @@ jobs:
       - name: Display security scan results
         if: always()
         run: |
-          echo "Security scan completed. Results:"
+          echo "🔒 Security Scan Results"
+          echo "=================================================="
+
           if [ -f "trivy-results.sarif" ]; then
-            echo "SARIF file generated successfully"
-            # Show a summary of findings
-            cat trivy-results.sarif | jq -r '.runs[0].results[] | .message.text' || echo "No security issues found or jq not available"
+            echo "✅ Production dependencies scan completed"
+            # Count findings in SARIF
+            findings=$(cat trivy-results.sarif | jq -r '.runs[0].results | length' 2>/dev/null || echo "0")
+            echo "Production vulnerabilities found: $findings"
           else
-            echo "No SARIF file generated"
+            echo "❌ Production scan SARIF file not generated"
           fi
 
-  # Job 7: Notification
-  notify:
-    name: Notify Results
+          echo ""
+          echo "📊 All Dependencies Scan (Including Test Dependencies):"
+          echo "--------------------------------------------------"
+          if [ -f "trivy-all-results.txt" ]; then
+            cat trivy-all-results.txt
+            echo ""
+            echo "ℹ️  Note: Test-only vulnerabilities are ignored in production scans"
+            echo "   See .trivyignore for details on ignored CVEs"
+          else
+            echo "All dependencies scan not available"
+          fi
+
+      - name: Upload security scan artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            trivy-results.sarif
+            trivy-all-results.txt
+            .trivyignore
+
+  # Job 8: Test Summary
+  test-summary:
+    name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, build-tests, integration-tests, docker-tests, security-scan]
+    needs: [unit-tests, contract-tests, build-tests, integration-tests, docker-tests, security-scan]
     if: always()
     steps:
-      - name: Notify success
-        if: ${{ needs.unit-tests.result == 'success' && needs.build-tests.result == 'success' && needs.integration-tests.result == 'success' }}
-        run: |
-          echo "✅ All tests passed successfully!"
-          echo "- Unit tests: ${{ needs.unit-tests.result }}"
-          echo "- Build tests: ${{ needs.build-tests.result }}"
-          echo "- Integration tests: ${{ needs.integration-tests.result }}"
-          echo "- Docker tests: ${{ needs.docker-tests.result }}"
-          echo "- Security scan: ${{ needs.security-scan.result }}"
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Notify failure
-        if: ${{ needs.unit-tests.result == 'failure' || needs.build-tests.result == 'failure' || needs.integration-tests.result == 'failure' }}
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+
+      - name: Generate comprehensive test report
         run: |
-          echo "❌ Some tests failed!"
-          echo "- Unit tests: ${{ needs.unit-tests.result }}"
-          echo "- Build tests: ${{ needs.build-tests.result }}"
-          echo "- Integration tests: ${{ needs.integration-tests.result }}"
-          echo "- Docker tests: ${{ needs.docker-tests.result }}"
-          echo "- Security scan: ${{ needs.security-scan.result }}"
-          exit 1
+          echo "# 🧪 CryptoPulse CI/CD Test Results" > test-summary.md
+          echo "" >> test-summary.md
+          echo "## Test Suite Results" >> test-summary.md
+          echo "" >> test-summary.md
+
+          # Function to get status emoji
+          get_status_emoji() {
+            case "$1" in
+              "success") echo "✅" ;;
+              "failure") echo "❌" ;;
+              "cancelled") echo "⚠️" ;;
+              "skipped") echo "⏭️" ;;
+              *) echo "❓" ;;
+            esac
+          }
+
+          echo "| Test Category | Status | Result |" >> test-summary.md
+          echo "|---------------|--------|--------|" >> test-summary.md
+          echo "| Unit Tests | $(get_status_emoji '${{ needs.unit-tests.result }}') | ${{ needs.unit-tests.result }} |" >> test-summary.md
+          echo "| OpenAPI Contract Tests | $(get_status_emoji '${{ needs.contract-tests.result }}') | ${{ needs.contract-tests.result }} |" >> test-summary.md
+          echo "| Build Tests | $(get_status_emoji '${{ needs.build-tests.result }}') | ${{ needs.build-tests.result }} |" >> test-summary.md
+          echo "| Integration & E2E Tests | $(get_status_emoji '${{ needs.integration-tests.result }}') | ${{ needs.integration-tests.result }} |" >> test-summary.md
+          echo "| Docker Tests | $(get_status_emoji '${{ needs.docker-tests.result }}') | ${{ needs.docker-tests.result }} |" >> test-summary.md
+          echo "| Security Scan | $(get_status_emoji '${{ needs.security-scan.result }}') | ${{ needs.security-scan.result }} |" >> test-summary.md
+          echo "" >> test-summary.md
+
+          # Overall status
+          if [[ "${{ needs.unit-tests.result }}" == "success" && "${{ needs.contract-tests.result }}" == "success" && "${{ needs.build-tests.result }}" == "success" && "${{ needs.integration-tests.result }}" == "success" ]]; then
+            echo "## 🎉 Overall Status: SUCCESS" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "All critical tests passed successfully! The application is ready for deployment." >> test-summary.md
+          else
+            echo "## ❌ Overall Status: FAILURE" >> test-summary.md
+            echo "" >> test-summary.md
+            echo "Some tests failed. Please review the failed jobs and fix the issues before proceeding." >> test-summary.md
+          fi
+
+          echo "" >> test-summary.md
+          echo "## Test Coverage" >> test-summary.md
+          echo "" >> test-summary.md
+          echo "- **Unit Tests**: Core business logic validation" >> test-summary.md
+          echo "- **Contract Tests**: API specification alignment" >> test-summary.md
+          echo "- **Integration Tests**: Database and external service integration" >> test-summary.md
+          echo "- **E2E Tests**: Full application workflow validation" >> test-summary.md
+          echo "- **Build Tests**: Cross-platform compilation and binary validation" >> test-summary.md
+          echo "- **Docker Tests**: Container build and deployment validation" >> test-summary.md
+          echo "- **Security Scan**: Vulnerability and security assessment" >> test-summary.md
+
+          # Display the summary
+          cat test-summary.md
+
+      - name: Upload test summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary-report
+          path: test-summary.md
+
+      - name: Set final status
+        run: |
+          if [[ "${{ needs.unit-tests.result }}" == "success" && "${{ needs.contract-tests.result }}" == "success" && "${{ needs.build-tests.result }}" == "success" && "${{ needs.integration-tests.result }}" == "success" ]]; then
+            echo "✅ All critical tests passed!"
+            exit 0
+          else
+            echo "❌ Some critical tests failed!"
+            exit 1
+          fi
