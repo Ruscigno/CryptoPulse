@@ -105,12 +105,30 @@ TESTNET_MNEMONIC="abandon abandon abandon abandon abandon abandon abandon abando
 Check wallet balance using dYdX Indexer API:
 
 ```bash
-# Replace with your actual wallet address
-WALLET_ADDRESS="dydx1your-wallet-address-here"
+# Use the convenient make command (reads address from .env.local)
+make dydx-check-wallet
 
+# Or manually with curl (replace with your actual wallet address)
+WALLET_ADDRESS="dydx1your-wallet-address-here"
 curl -X GET "https://indexer.v4testnet.dydx.exchange/v4/addresses/${WALLET_ADDRESS}" \
   -H "accept: application/json"
 ```
+
+**Common Issue**: If you get "No subaccounts found for address", this means your wallet hasn't been initialized on dYdX yet. To fix this:
+
+1. **Connect to dYdX Web Interface** (creates subaccount automatically):
+   ```bash
+   # Opens dYdX testnet trading interface
+   open "https://trade.v4testnet.dydx.exchange/"
+   ```
+   Connect your wallet (MetaMask, Keplr, etc.) to automatically create subaccount 0.
+
+2. **Or request testnet funds first** (may also initialize the wallet):
+   ```bash
+   make faucet-web  # Use web faucet
+   # or
+   make faucet-curl # Use curl workaround
+   ```
 
 ## Service Configuration
 
