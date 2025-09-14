@@ -5,15 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Django",
-            "type": "debugpy",
+            "name": "Launch crypto-pulse",
+            "type": "go",
             "request": "launch",
-            "program": "${workspaceFolder}/manage.py",
+            "mode": "auto",
+            "program": "main.go",
+            "envFile": "${workspaceFolder}/.env.local",
             "args": [
-                "runserver"
-            ],
-            "django": true,
-            "justMyCode": true
-        }
+                "serve"
+            ]
+        },
+        {
+            "name": "Launch finviz-scraper",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "main.go",
+            "envFile": "${workspaceFolder}/.env.local",
+            "args": [
+                "finviz-scraper"
+            ]
+        },
     ]
 }

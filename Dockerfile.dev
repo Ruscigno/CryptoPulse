@@ -1,0 +1,25 @@
+FROM golang:1.25-alpine AS development
+
+# Install necessary packages
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Install air for hot reloading in development
+RUN go install github.com/air-verse/air@latest
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 8080
+
+# Default command for development (can be overridden in docker-compose)
+CMD ["air", "-c", ".air.toml"]
