@@ -119,17 +119,23 @@ dev: install-air ## Alias for run-dev (run with hot reloading)
 
 # Testing
 .PHONY: test
-test: ## Run unit tests
-	go test -v ./pkg/... ./tests/unit/...
+test: test-quick ## Run quick tests (alias for test-quick)
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
+	@echo "Running unit tests..."
 	go test -v ./tests/unit/...
 
 .PHONY: test-integration
-test-integration: ## Run integration tests
+test-integration: ## Run integration tests with database setup
+	@echo "Setting up test database..."
+	@$(MAKE) dev-up
+	@sleep 3
+	@$(MAKE) migrate-up
 	@echo "Running integration tests..."
 	INTEGRATION_TESTS=true go test -v ./tests/integration/...
+	@echo "Cleaning up..."
+	@$(MAKE) dev-down
 
 .PHONY: test-e2e
 test-e2e: ## Run end-to-end tests
@@ -141,6 +147,10 @@ test-openapi-contract: ## Run OpenAPI contract tests
 	@echo "Running OpenAPI contract tests..."
 	@./scripts/test-openapi-contract.sh
 
+.PHONY: test-status
+test-status: ## Show test suite status and available commands
+	@./scripts/test-status.sh
+
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage
 	@echo "Running tests with coverage..."
@@ -148,22 +158,56 @@ test-coverage: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
-.PHONY: test-all
-test-all: ## Run all tests
+.PHONY: test-quick
+test-quick: ## Run quick tests (unit + contract)
 	@echo "Running unit tests..."
 	go test -v ./tests/unit/...
-	@if [ "$$INTEGRATION_TESTS" = "true" ]; then \
-		go test -v ./tests/integration/...; \
-	else \
-		echo "Skipping integration tests (set INTEGRATION_TESTS=true to run)"; \
-	fi
-	@if [ "$$E2E_TESTS" = "true" ]; then \
-		go test -v ./tests/e2e/...; \
-	else \
-		echo "Skipping e2e tests (set E2E_TESTS=true to run)"; \
-	fi
 	@echo "Running OpenAPI contract tests..."
 	@./scripts/test-openapi-contract.sh
+
+.PHONY: test-all
+test-all: ## Run all tests including integration and e2e
+	@echo "🧪 Running comprehensive test suite..."
+	@echo "=================================================="
+	@echo "1. Unit Tests"
+	@echo "--------------------------------------------------"
+	go test -v ./tests/unit/...
+	@echo ""
+	@echo "2. Integration Tests"
+	@echo "--------------------------------------------------"
+	INTEGRATION_TESTS=true go test -v ./tests/integration/...
+	@echo ""
+	@echo "3. OpenAPI Contract Tests"
+	@echo "--------------------------------------------------"
+	@./scripts/test-openapi-contract.sh
+	@if [ -d "./tests/e2e" ] && [ -n "$$(find ./tests/e2e -name '*.go' -type f 2>/dev/null)" ]; then \
+		echo ""; \
+		echo "4. End-to-End Tests"; \
+		echo "--------------------------------------------------"; \
+		E2E_TESTS=true go test -v ./tests/e2e/...; \
+	else \
+		echo ""; \
+		echo "4. End-to-End Tests"; \
+		echo "--------------------------------------------------"; \
+		echo "No e2e tests found - skipping"; \
+	fi
+	@echo ""
+	@echo "🎉 All tests completed!"
+
+.PHONY: test-ci
+test-ci: ## Run tests suitable for CI/CD (with proper setup)
+	@echo "🚀 Running CI test suite..."
+	@echo "=================================================="
+	@echo "Setting up test environment..."
+	@$(MAKE) dev-up
+	@sleep 5
+	@$(MAKE) migrate-up
+	@echo ""
+	@echo "Running tests..."
+	@$(MAKE) test-all
+	@echo ""
+	@echo "Cleaning up..."
+	@$(MAKE) dev-down
 
 # Code Quality
 .PHONY: lint
