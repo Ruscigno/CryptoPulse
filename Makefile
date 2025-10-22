@@ -423,24 +423,63 @@ faucet-curl: ## Request testnet funds using curl (SSL certificate workaround)
 		-s --show-error || echo "❌ Curl request failed"
 
 .PHONY: faucet-web
-faucet-web: ## Open dYdX testnet faucet in web browser
-	@echo "🌐 Opening dYdX testnet faucet in your web browser..."
+faucet-web: ## Open dYdX testnet trading interface for wallet initialization
+	@echo "🌐 Opening dYdX testnet trading interface..."
+	@echo "💡 This will help you initialize your wallet and create subaccount 0"
+	@echo "📍 Connect your wallet to automatically create the required subaccount"
+	@echo ""
+	@echo "🔗 Available dYdX testnet interfaces:"
+	@echo "   • https://v4.testnet.dydx.exchange/ (official testnet)"
+	@echo "   • Join dYdX Discord for testnet faucet access"
+	@echo "   • Use Discord bot: /faucet <your-address>"
+	@echo ""
 	@if command -v open >/dev/null 2>&1; then \
-		open "https://faucet.v4testnet.dydx.exchange/"; \
+		echo "🚀 Opening dYdX testnet interface..."; \
+		open "https://v4.testnet.dydx.exchange/" || \
+		(echo "❌ Could not open browser, trying Discord..."; \
+		 open "https://discord.gg/dydx" 2>/dev/null || \
+		 echo "❌ Could not open browser automatically"); \
 	elif command -v xdg-open >/dev/null 2>&1; then \
-		xdg-open "https://faucet.v4testnet.dydx.exchange/"; \
-	elif command -v start >/dev/null 2>&1; then \
-		start "https://faucet.v4testnet.dydx.exchange/"; \
+		echo "🚀 Opening dYdX testnet interface..."; \
+		xdg-open "https://v4.testnet.dydx.exchange/" || \
+		(echo "❌ Could not open browser, trying Discord..."; \
+		 xdg-open "https://discord.gg/dydx" 2>/dev/null || \
+		 echo "❌ Could not open browser automatically"); \
 	else \
-		echo "📋 Please open this URL manually:"; \
-		echo "   https://faucet.v4testnet.dydx.exchange/"; \
+		echo "📋 Please manually visit one of these:"; \
+		echo "   1. https://v4.testnet.dydx.exchange/"; \
+		echo "   2. https://discord.gg/dydx (for faucet access)"; \
 	fi
 	@if [ -f .env.local ]; then \
 		ADDRESS=$$(grep -v '^#' .env.local | grep DYDX_ADDRESS | cut -d'=' -f2 | tr -d '"'); \
 		if [ -n "$$ADDRESS" ] && [ "$$ADDRESS" != "dydx1abc123456789abcdefghijklmnopqrstuvwxyz" ]; then \
-			echo "📍 Your address from .env.local: $$ADDRESS"; \
+			echo ""; \
+			echo "📍 Your dYdX address: $$ADDRESS"; \
+			echo "💡 Use this address in Discord faucet: /faucet $$ADDRESS"; \
+		else \
+			echo ""; \
+			echo "⚠️  You still have a placeholder address in .env.local"; \
+			echo "🔧 Run 'make dydx-derive-address' to get your real address first"; \
 		fi; \
 	fi
+
+.PHONY: dydx-derive-address
+dydx-derive-address: ## Derive real dYdX address from mnemonic in .env.local
+	@echo "🔑 Deriving dYdX address from mnemonic..."
+	@if [ -f scripts/obtain-testnet-funds-via-faucet/node_modules/@dydxprotocol/v4-client-js/package.json ]; then \
+		cd scripts/obtain-testnet-funds-via-faucet && node ../derive-dydx-address.js; \
+	else \
+		echo "📦 Using lightweight derivation (dependencies not installed)..."; \
+		node scripts/simple-address-derive.js; \
+	fi
+
+.PHONY: dydx-verify-address
+dydx-verify-address: ## Verify your dYdX address matches the web interface
+	@node scripts/verify-address.js
+
+.PHONY: wallet-setup
+wallet-setup: ## Setup wallet (derive address, verify, request funds)
+	@node scripts/wallet-setup.js
 
 .PHONY: dydx-check-wallet
 dydx-check-wallet: ## Check dYdX wallet status and subaccounts

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -12,8 +13,10 @@ import (
 	"github.com/Ruscigno/CryptoPulse/pkg/database"
 	"github.com/Ruscigno/CryptoPulse/pkg/endpoint"
 	"github.com/Ruscigno/CryptoPulse/pkg/query"
+	"github.com/Ruscigno/CryptoPulse/pkg/reconciliation"
 	"github.com/Ruscigno/CryptoPulse/pkg/repository"
 	"github.com/Ruscigno/CryptoPulse/pkg/service"
+	"github.com/Ruscigno/CryptoPulse/pkg/sync"
 	httptransport "github.com/Ruscigno/CryptoPulse/pkg/transport/http"
 	"github.com/Ruscigno/CryptoPulse/pkg/tx"
 	"github.com/Ruscigno/CryptoPulse/pkg/wallet"
@@ -74,17 +77,40 @@ func main() {
 		logger.Fatal("Failed to initialize wallet", zap.Error(err))
 	}
 
+	// Initialize query client
+	queryClient := query.NewQueryClient(cfg, logger)
+
 	// Initialize transaction builder
-	txBuilder, err := tx.NewTxBuilder(wallet, cfg, logger)
+	txBuilder, err := tx.NewTxBuilder(wallet, cfg, logger, queryClient)
 	if err != nil {
 		logger.Fatal("Failed to initialize transaction builder", zap.Error(err))
 	}
 
-	// Initialize query client
-	queryClient := query.NewQueryClient(cfg, logger)
-
 	// Initialize service with all dependencies
 	svc := service.NewService(wallet, txBuilder, queryClient, orderRepo, db, logger)
+
+	// Initialize sync services (Phase 2)
+	orderSyncService := sync.NewOrderSyncService(queryClient, orderRepo, logger, 5*time.Second)
+	positionSyncService := sync.NewPositionSyncService(queryClient, logger, 5*time.Second, 5*time.Minute)
+	_ = reconciliation.NewTransactionReconciler(queryClient, orderRepo, logger) // For future use in reconciliation endpoint
+
+	// Start background sync services
+	ctx := context.Background()
+	walletAddr, err := wallet.GetAddress(ctx)
+	if err != nil {
+		logger.Fatal("Failed to get wallet address", zap.Error(err))
+	}
+
+	if err := orderSyncService.Start(ctx, walletAddr); err != nil {
+		logger.Fatal("Failed to start order sync service", zap.Error(err))
+	}
+
+	if err := positionSyncService.Start(ctx, walletAddr); err != nil {
+		logger.Fatal("Failed to start position sync service", zap.Error(err))
+	}
+
+	logger.Info("Background sync services started",
+		zap.String("wallet_address", walletAddr))
 
 	// Create endpoints
 	endpoints := endpoint.MakeEndpoints(svc)
