@@ -3,6 +3,7 @@ package tx
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"strconv"
@@ -255,6 +256,11 @@ func (t *TxBuilder) QuantizeSize(ctx context.Context, size float64, market strin
 		return nil, err
 	}
 
+	// Safe conversion: check for overflow before converting
+	if quantums > math.MaxInt64 {
+		return nil, fmt.Errorf("quantums value %d exceeds maximum int64 value", quantums)
+	}
+
 	return big.NewInt(int64(quantums)), nil
 }
 
@@ -273,6 +279,11 @@ func (t *TxBuilder) QuantizePrice(ctx context.Context, price float64, market str
 	subticks, err := t.messageBuilder.QuantizePrice(price, marketMeta.SubticksPerTick)
 	if err != nil {
 		return nil, err
+	}
+
+	// Safe conversion: check for overflow before converting
+	if subticks > math.MaxInt64 {
+		return nil, fmt.Errorf("subticks value %d exceeds maximum int64 value", subticks)
 	}
 
 	return big.NewInt(int64(subticks)), nil

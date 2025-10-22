@@ -222,7 +222,11 @@ func (tr *TransactionReconciler) convertStatus(chainStatus string) repository.Or
 // parseFloat safely parses a string to float64
 func parseFloat(s string) float64 {
 	var f float64
-	fmt.Sscanf(s, "%f", &f)
+	_, err := fmt.Sscanf(s, "%f", &f)
+	if err != nil {
+		// Return 0 if parsing fails
+		return 0
+	}
 	return f
 }
 

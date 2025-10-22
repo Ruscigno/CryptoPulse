@@ -212,5 +212,5 @@ func (th *TestnetHelper) AssertPositionSize(ctx context.Context, market string, 
 
 // Close closes the testnet helper
 func (th *TestnetHelper) Close() {
-	th.logger.Sync()
+	_ = th.logger.Sync() // nolint: errcheck
 }
