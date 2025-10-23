@@ -1,0 +1,132 @@
+# Trivy Configuration File
+# Reference: https://aquasecurity.github.io/trivy/latest/docs/configuration/
+
+# Scan settings
+scan:
+  # Scan targets
+  target: "."
+  
+  # Scan type: filesystem, image, repository, sbom, config
+  type: "fs"
+  
+  # Security checks to perform
+  security-checks:
+    - vuln
+    - config
+    - secret
+  
+  # Skip specific checks
+  skip-checks: []
+  
+  # Severity levels to report
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    - LOW
+    - UNKNOWN
+
+# Vulnerability settings
+vulnerability:
+  # Skip vulnerabilities with no fix available
+  skip-unfixed: false
+  
+  # Skip vulnerabilities with no known exploits
+  skip-unaffected: false
+  
+  # Ignore file
+  ignore-file: ".trivyignore"
+  
+  # Offline mode (don't download vulnerability database)
+  offline-scan: false
+
+# Miscellaneous settings
+miscellaneous:
+  # Debug mode
+  debug: false
+  
+  # Quiet mode (minimal output)
+  quiet: false
+  
+  # Exit code on vulnerabilities found
+  exit-code: 0
+
+# Output settings
+output:
+  # Output format: table, json, sarif, cyclonedx, spdx, spdx-json, github, template
+  format: "sarif"
+  
+  # Output file
+  output: "trivy-results.sarif"
+  
+  # Template for custom output
+  template: ""
+
+# Cache settings
+cache:
+  # Cache directory
+  dir: ""
+  
+  # Clear cache before scan
+  clear: false
+
+# Database settings
+db:
+  # Database repository
+  repository: "ghcr.io/aquasecurity/trivy-db"
+  
+  # Skip database update
+  skip-update: false
+  
+  # Database download timeout
+  download-timeout: 600
+
+# Registry settings (for image scanning)
+registry:
+  # Username for registry authentication
+  username: ""
+  
+  # Password for registry authentication
+  password: ""
+  
+  # Use SSL/TLS
+  insecure: false
+
+# Kubernetes settings (for k8s scanning)
+kubernetes:
+  # Kubernetes API server URL
+  api-server: ""
+  
+  # Kubernetes namespace
+  namespace: ""
+  
+  # Kubernetes context
+  context: ""
+
+# Policy settings
+policy:
+  # Policy bundle repository
+  bundle-repository: ""
+  
+  # Policy bundle version
+  bundle-version: ""
+
+# Reporting settings
+report:
+  # Report format
+  format: "sarif"
+  
+  # Report output file
+  output: "trivy-results.sarif"
+  
+  # Report template
+  template: ""
+  
+  # Report severity
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    - LOW
+    - UNKNOWN
+
