@@ -1,0 +1,23 @@
+{
+	"name": "dydx-testnet-faucet",
+	"version": "1.0.0",
+	"description": "Script to obtain testnet funds from dYdX faucet",
+
+	"main": "obtain-testnet-funds-via-faucet.js",
+	"scripts": {
+		"start": "node obtain-testnet-funds-via-faucet.js",
+		"faucet": "node obtain-testnet-funds-via-faucet.js"
+	},
+	"dependencies": {
+		"@dydxprotocol/v4-client-js": "^3.0.7",
+		"axios": "^1.8.2"
+	},
+	"pnpm": {
+		"overrides": {
+			"axios": "^1.8.2"
+		}
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}

@@ -333,6 +333,190 @@ health-check: ## Check application health
 	@echo "Checking application health..."
 	@curl -f http://localhost:8080/health || echo "Health check failed"
 
+# dYdX Testnet Utilities
+.PHONY: faucet-help
+faucet-help: ## Show dYdX testnet faucet usage
+	@cd scripts/obtain-testnet-funds-via-faucet && node obtain-testnet-funds-via-faucet.js --help
+
+.PHONY: faucet-address
+faucet-address: ## Show current DYDX_ADDRESS from .env.local
+	@if [ -f .env.local ]; then \
+		ADDR=$$(grep -v '^#' .env.local | grep DYDX_ADDRESS | cut -d'=' -f2 | tr -d '"'); \
+		if [ -n "$$ADDR" ]; then \
+			echo "📍 Current dYdX address from .env.local:"; \
+			echo "   $$ADDR"; \
+		else \
+			echo "❌ DYDX_ADDRESS not found in .env.local"; \
+			echo "   Please add: DYDX_ADDRESS=dydx1your_address_here"; \
+		fi; \
+	else \
+		echo "❌ .env.local file not found"; \
+		echo "   Please create .env.local with DYDX_ADDRESS=dydx1your_address_here"; \
+	fi
+
+.PHONY: faucet
+faucet: ## Request testnet funds from dYdX faucet (reads DYDX_ADDRESS from .env.local)
+	@# Load DYDX_ADDRESS from .env.local if not already set
+	@if [ -f .env.local ]; then \
+		export $$(grep -v '^#' .env.local | grep DYDX_ADDRESS | xargs); \
+	fi; \
+	if [ -z "$$DYDX_ADDRESS" ] && [ -z "$(DYDX_ADDRESS)" ] && [ -z "$(1)" ]; then \
+		echo "❌ Error: DYDX_ADDRESS not found"; \
+		echo ""; \
+		echo "Please set DYDX_ADDRESS in one of these ways:"; \
+		echo "  1. Add DYDX_ADDRESS=dydx1abc... to .env.local file"; \
+		echo "  2. Run: make faucet DYDX_ADDRESS=dydx1abc..."; \
+		echo "  3. Run: DYDX_ADDRESS=dydx1abc... make faucet"; \
+		echo ""; \
+		echo "For more options, run: make faucet-help"; \
+		exit 1; \
+	fi; \
+	echo "🚰 Requesting testnet funds from dYdX faucet..."; \
+	cd scripts/obtain-testnet-funds-via-faucet && \
+		if [ -n "$(1)" ]; then \
+			DYDX_ADDRESS="$(1)" node obtain-testnet-funds-via-faucet.js; \
+		elif [ -n "$(DYDX_ADDRESS)" ]; then \
+			DYDX_ADDRESS="$(DYDX_ADDRESS)" node obtain-testnet-funds-via-faucet.js; \
+		else \
+			if [ -f ../.env.local ]; then \
+				export $$(grep -v '^#' ../.env.local | grep DYDX_ADDRESS | xargs) && \
+				node obtain-testnet-funds-via-faucet.js; \
+			else \
+				node obtain-testnet-funds-via-faucet.js; \
+			fi; \
+		fi
+
+.PHONY: faucet-install
+faucet-install: ## Install dependencies for faucet script
+	@echo "📦 Installing faucet script dependencies..."
+	@cd scripts/obtain-testnet-funds-via-faucet && npm install
+	@echo "✅ Faucet dependencies installed"
+
+.PHONY: faucet-curl
+faucet-curl: ## Request testnet funds using curl (SSL certificate workaround)
+	@# Load DYDX_ADDRESS from .env.local if not already set
+	@if [ -f .env.local ]; then \
+		export $$(grep -v '^#' .env.local | grep DYDX_ADDRESS | xargs); \
+	fi; \
+	if [ -z "$$DYDX_ADDRESS" ] && [ -z "$(DYDX_ADDRESS)" ] && [ -z "$(1)" ]; then \
+		echo "❌ Error: DYDX_ADDRESS not found"; \
+		echo ""; \
+		echo "Please set DYDX_ADDRESS in one of these ways:"; \
+		echo "  1. Add DYDX_ADDRESS=dydx1abc... to .env.local file"; \
+		echo "  2. Run: make faucet-curl DYDX_ADDRESS=dydx1abc..."; \
+		echo "  3. Run: DYDX_ADDRESS=dydx1abc... make faucet-curl"; \
+		exit 1; \
+	fi; \
+	ADDRESS=$${1:-$${DYDX_ADDRESS:-$$DYDX_ADDRESS}}; \
+	if [ -z "$$ADDRESS" ] && [ -f .env.local ]; then \
+		ADDRESS=$$(grep -v '^#' .env.local | grep DYDX_ADDRESS | cut -d'=' -f2 | tr -d '"'); \
+	fi; \
+	echo "🚰 Requesting testnet funds using curl (SSL workaround)..."; \
+	echo "📍 Address: $$ADDRESS"; \
+	echo "💰 Amount: 2000 USDC"; \
+	echo "🔢 Subaccount: 0"; \
+	echo ""; \
+	curl -k -X POST "https://faucet.v4testnet.dydx.exchange/fill" \
+		-H "Content-Type: application/json" \
+		-d "{\"address\":\"$$ADDRESS\",\"subaccountNumber\":0,\"amount\":2000}" \
+		-w "\n\n📊 HTTP Status: %{http_code}\n" \
+		-s --show-error || echo "❌ Curl request failed"
+
+.PHONY: faucet-web
+faucet-web: ## Open dYdX testnet trading interface for wallet initialization
+	@echo "🌐 Opening dYdX testnet trading interface..."
+	@echo "💡 This will help you initialize your wallet and create subaccount 0"
+	@echo "📍 Connect your wallet to automatically create the required subaccount"
+	@echo ""
+	@echo "🔗 Available dYdX testnet interfaces:"
+	@echo "   • https://v4.testnet.dydx.exchange/ (official testnet)"
+	@echo "   • Join dYdX Discord for testnet faucet access"
+	@echo "   • Use Discord bot: /faucet <your-address>"
+	@echo ""
+	@if command -v open >/dev/null 2>&1; then \
+		echo "🚀 Opening dYdX testnet interface..."; \
+		open "https://v4.testnet.dydx.exchange/" || \
+		(echo "❌ Could not open browser, trying Discord..."; \
+		 open "https://discord.gg/dydx" 2>/dev/null || \
+		 echo "❌ Could not open browser automatically"); \
+	elif command -v xdg-open >/dev/null 2>&1; then \
+		echo "🚀 Opening dYdX testnet interface..."; \
+		xdg-open "https://v4.testnet.dydx.exchange/" || \
+		(echo "❌ Could not open browser, trying Discord..."; \
+		 xdg-open "https://discord.gg/dydx" 2>/dev/null || \
+		 echo "❌ Could not open browser automatically"); \
+	else \
+		echo "📋 Please manually visit one of these:"; \
+		echo "   1. https://v4.testnet.dydx.exchange/"; \
+		echo "   2. https://discord.gg/dydx (for faucet access)"; \
+	fi
+	@if [ -f .env.local ]; then \
+		ADDRESS=$$(grep -v '^#' .env.local | grep DYDX_ADDRESS | cut -d'=' -f2 | tr -d '"'); \
+		if [ -n "$$ADDRESS" ] && [ "$$ADDRESS" != "dydx1abc123456789abcdefghijklmnopqrstuvwxyz" ]; then \
+			echo ""; \
+			echo "📍 Your dYdX address: $$ADDRESS"; \
+			echo "💡 Use this address in Discord faucet: /faucet $$ADDRESS"; \
+		else \
+			echo ""; \
+			echo "⚠️  You still have a placeholder address in .env.local"; \
+			echo "🔧 Run 'make dydx-derive-address' to get your real address first"; \
+		fi; \
+	fi
+
+.PHONY: dydx-derive-address
+dydx-derive-address: ## Derive real dYdX address from mnemonic in .env.local
+	@echo "🔑 Deriving dYdX address from mnemonic..."
+	@if [ -f scripts/obtain-testnet-funds-via-faucet/node_modules/@dydxprotocol/v4-client-js/package.json ]; then \
+		cd scripts/obtain-testnet-funds-via-faucet && node ../derive-dydx-address.js; \
+	else \
+		echo "📦 Using lightweight derivation (dependencies not installed)..."; \
+		node scripts/simple-address-derive.js; \
+	fi
+
+.PHONY: dydx-verify-address
+dydx-verify-address: ## Verify your dYdX address matches the web interface
+	@node scripts/verify-address.js
+
+.PHONY: wallet-setup
+wallet-setup: ## Setup wallet (derive address, verify, request funds)
+	@node scripts/wallet-setup.js
+
+.PHONY: dydx-check-wallet
+dydx-check-wallet: ## Check dYdX wallet status and subaccounts
+	@# Load DYDX_ADDRESS from .env.local if not already set
+	@if [ -f .env.local ]; then \
+		export $$(grep -v '^#' .env.local | grep DYDX_ADDRESS | xargs); \
+	fi; \
+	if [ -z "$$DYDX_ADDRESS" ] && [ -z "$(DYDX_ADDRESS)" ]; then \
+		echo "❌ Error: DYDX_ADDRESS not found"; \
+		echo "Please add DYDX_ADDRESS=dydx1abc... to .env.local file"; \
+		exit 1; \
+	fi; \
+	ADDRESS=$${DYDX_ADDRESS:-$(DYDX_ADDRESS)}; \
+	if [ -z "$$ADDRESS" ] && [ -f .env.local ]; then \
+		ADDRESS=$$(grep -v '^#' .env.local | grep DYDX_ADDRESS | cut -d'=' -f2 | tr -d '"'); \
+	fi; \
+	echo "🔍 Checking dYdX wallet status..."; \
+	echo "📍 Address: $$ADDRESS"; \
+	echo ""; \
+	echo "📊 Subaccounts:"; \
+	curl -s -X GET "https://indexer.v4testnet.dydx.exchange/v4/addresses/$$ADDRESS" \
+		-H "accept: application/json" | \
+	if command -v jq >/dev/null 2>&1; then \
+		jq -r 'if .subaccounts then "✅ Found " + (.subaccounts | length | tostring) + " subaccount(s)" else "❌ No subaccounts found - wallet needs to be initialized" end'; \
+	else \
+		grep -o '"subaccounts":\[[^]]*\]' || echo "❌ No subaccounts found - wallet needs to be initialized"; \
+	fi; \
+	echo ""; \
+	echo "💰 Account Details:"; \
+	curl -s -X GET "https://indexer.v4testnet.dydx.exchange/v4/addresses/$$ADDRESS" \
+		-H "accept: application/json" | \
+	if command -v jq >/dev/null 2>&1; then \
+		jq -r 'if .subaccounts then .subaccounts[] | "  Subaccount \(.subaccountNumber): \(.equity // "0") USD" else "  No subaccounts to display" end'; \
+	else \
+		cat; \
+	fi
+
 # Production
 .PHONY: build-prod
 build-prod: ## Build production binary

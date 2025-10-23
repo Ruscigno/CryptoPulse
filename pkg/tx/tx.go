@@ -3,24 +3,31 @@ package tx
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/Ruscigno/CryptoPulse/pkg/config"
+	"github.com/Ruscigno/CryptoPulse/pkg/query"
 	"github.com/Ruscigno/CryptoPulse/pkg/wallet"
 	"go.uber.org/zap"
 )
 
 // TxBuilder handles transaction construction and broadcasting for dYdX
 type TxBuilder struct {
-	wallet        *wallet.Wallet
-	config        config.Config
-	logger        *zap.Logger
-	chainID       string
-	gasPrice      string
-	gasAdjustment float64
+	wallet         *wallet.Wallet
+	config         config.Config
+	logger         *zap.Logger
+	chainID        string
+	gasPrice       string
+	gasAdjustment  float64
+	factory        *TransactionFactory
+	messageBuilder *MessageBuilder
+	broadcaster    *Broadcaster
+	marketCache    *query.MarketCache
+	subaccountID   uint32
 }
 
 // TxBuilderConfig holds transaction builder configuration
@@ -54,14 +61,50 @@ type TxResponse struct {
 }
 
 // NewTxBuilder creates a new TxBuilder instance
-func NewTxBuilder(w *wallet.Wallet, cfg config.Config, logger *zap.Logger) (*TxBuilder, error) {
+func NewTxBuilder(
+	w *wallet.Wallet,
+	cfg config.Config,
+	logger *zap.Logger,
+	queryClient *query.QueryClient,
+) (*TxBuilder, error) {
+	gasPrice := getEnvString("GAS_PRICE", "0.025udydx")
+	gasLimit := uint64(getEnvFloat("GAS_LIMIT", 200000))
+
+	// Create transaction factory
+	factory := NewTransactionFactory(
+		nil, // codec will be set up in production
+		cfg.ChainID,
+		gasPrice,
+		gasLimit,
+		logger,
+		w,
+	)
+
+	// Create message builder
+	messageBuilder := NewMessageBuilder(logger)
+
+	// Create broadcaster
+	broadcaster := NewBroadcaster(
+		cfg.RPCURL,
+		30*time.Second,
+		logger,
+	)
+
+	// Create market cache
+	marketCache := query.NewMarketCache(queryClient, 5*time.Minute, logger)
+
 	return &TxBuilder{
-		wallet:        w,
-		config:        cfg,
-		logger:        logger,
-		chainID:       cfg.ChainID,
-		gasPrice:      getEnvString("GAS_PRICE", "0.025udydx"),
-		gasAdjustment: getEnvFloat("GAS_ADJUSTMENT", 1.5),
+		wallet:         w,
+		config:         cfg,
+		logger:         logger,
+		chainID:        cfg.ChainID,
+		gasPrice:       gasPrice,
+		gasAdjustment:  getEnvFloat("GAS_ADJUSTMENT", 1.5),
+		factory:        factory,
+		messageBuilder: messageBuilder,
+		broadcaster:    broadcaster,
+		marketCache:    marketCache,
+		subaccountID:   0, // MVP uses subaccount 0
 	}, nil
 }
 
@@ -72,19 +115,85 @@ func (t *TxBuilder) PlaceOrder(ctx context.Context, params OrderParams) (*TxResp
 		zap.String("side", params.Side),
 		zap.Float64("size", params.Size))
 
-	// For MVP, return a mock response
-	// TODO: Implement actual dYdX transaction building and broadcasting
-	response := &TxResponse{
-		TxHash:    fmt.Sprintf("mock-tx-%d", time.Now().Unix()),
-		Code:      0, // Success
-		RawLog:    "Mock transaction successful",
-		GasUsed:   50000,
-		GasWanted: 60000,
-		Height:    12345,
-		Timestamp: time.Now(),
+	// 1. Fetch market configuration
+	market, err := t.marketCache.GetMarket(ctx, params.Market)
+	if err != nil {
+		t.logger.Error("Failed to fetch market configuration",
+			zap.String("market", params.Market),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to fetch market configuration: %w", err)
 	}
 
-	t.logger.Info("Place order transaction broadcasted (mock)",
+	// 2. Quantize size and price
+	quantums, err := t.messageBuilder.QuantizeSize(params.Size, market.AtomicResolution)
+	if err != nil {
+		t.logger.Error("Failed to quantize size", zap.Error(err))
+		return nil, err
+	}
+
+	if params.Price == nil {
+		return nil, fmt.Errorf("price is required for order placement")
+	}
+
+	subticks, err := t.messageBuilder.QuantizePrice(*params.Price, market.SubticksPerTick)
+	if err != nil {
+		t.logger.Error("Failed to quantize price", zap.Error(err))
+		return nil, err
+	}
+
+	// 3. Validate quantization
+	err = t.messageBuilder.ValidateQuantization(quantums, subticks, market.StepBaseQuantums)
+	if err != nil {
+		t.logger.Error("Quantization validation failed", zap.Error(err))
+		return nil, err
+	}
+
+	// 4. Generate client order ID
+	clientOrderID := t.messageBuilder.GenerateClientOrderID()
+
+	// 5. Build message
+	senderAddress, err := t.wallet.GetAddress(ctx)
+	if err != nil {
+		t.logger.Error("Failed to get wallet address", zap.Error(err))
+		return nil, err
+	}
+
+	goodTilBlock := *params.GoodTilBlock
+	if goodTilBlock == 0 {
+		goodTilBlock = 100 // Default to 100 blocks
+	}
+
+	msg, err := t.messageBuilder.BuildPlaceOrderMsg(
+		senderAddress,
+		params.Market,
+		params.Side,
+		quantums,
+		subticks,
+		goodTilBlock,
+		params.TimeInForce,
+		clientOrderID,
+		t.subaccountID,
+	)
+	if err != nil {
+		t.logger.Error("Failed to build message", zap.Error(err))
+		return nil, err
+	}
+
+	t.logger.Debug("Order message built successfully",
+		zap.String("market", params.Market),
+		zap.Uint64("quantums", quantums),
+		zap.Uint64("subticks", subticks))
+
+	// 6. Broadcast transaction (mock for now)
+	// Convert message to bytes for broadcasting
+	msgBytes := []byte(fmt.Sprintf("%+v", msg))
+	response, err := t.broadcaster.BroadcastAndWait(ctx, msgBytes)
+	if err != nil {
+		t.logger.Error("Failed to broadcast transaction", zap.Error(err))
+		return nil, err
+	}
+
+	t.logger.Info("Place order transaction broadcasted",
 		zap.String("tx_hash", response.TxHash),
 		zap.Uint32("code", response.Code))
 
@@ -95,39 +204,89 @@ func (t *TxBuilder) PlaceOrder(ctx context.Context, params OrderParams) (*TxResp
 func (t *TxBuilder) CancelOrder(ctx context.Context, orderID string) (*TxResponse, error) {
 	t.logger.Info("Building cancel order transaction", zap.String("order_id", orderID))
 
-	// For MVP, return a mock response
-	response := &TxResponse{
-		TxHash:    fmt.Sprintf("mock-cancel-tx-%d", time.Now().Unix()),
-		Code:      0,
-		RawLog:    "Mock cancel transaction successful",
-		GasUsed:   30000,
-		GasWanted: 40000,
-		Height:    12346,
-		Timestamp: time.Now(),
+	// Get sender address
+	senderAddress, err := t.wallet.GetAddress(ctx)
+	if err != nil {
+		t.logger.Error("Failed to get wallet address", zap.Error(err))
+		return nil, err
 	}
 
-	t.logger.Info("Cancel order transaction broadcasted (mock)",
-		zap.String("tx_hash", response.TxHash))
+	// Parse order ID (format: market:clientOrderID)
+	// For now, use a simple parsing approach
+	// In production, this would be more sophisticated
+
+	// Build cancel message
+	// Note: This is a simplified version. In production, you would need to:
+	// 1. Parse the order ID correctly
+	// 2. Get the market from the order ID
+	// 3. Build the proper MsgCancelOrder with correct OrderId structure
+
+	t.logger.Debug("Cancel order message built",
+		zap.String("sender", senderAddress),
+		zap.String("order_id", orderID))
+
+	// Broadcast transaction (mock for now)
+	response, err := t.broadcaster.BroadcastAndWait(ctx, []byte(orderID))
+	if err != nil {
+		t.logger.Error("Failed to broadcast cancel transaction", zap.Error(err))
+		return nil, err
+	}
+
+	t.logger.Info("Cancel order transaction broadcasted",
+		zap.String("tx_hash", response.TxHash),
+		zap.Uint32("code", response.Code))
 
 	return response, nil
 }
 
 // QuantizeSize converts a size to quantums (dYdX internal representation)
-func (t *TxBuilder) QuantizeSize(size float64, market string) (*big.Int, error) {
-	// This is a placeholder implementation
-	// In a real implementation, you would fetch market configuration
-	// and apply the correct quantization logic
-	quantums := big.NewInt(int64(size * 1000000)) // Mock: 6 decimal places
-	return quantums, nil
+func (t *TxBuilder) QuantizeSize(ctx context.Context, size float64, market string) (*big.Int, error) {
+	// Fetch market configuration
+	marketMeta, err := t.marketCache.GetMarket(ctx, market)
+	if err != nil {
+		t.logger.Error("Failed to fetch market configuration",
+			zap.String("market", market),
+			zap.Error(err))
+		return nil, err
+	}
+
+	// Use message builder to quantize
+	quantums, err := t.messageBuilder.QuantizeSize(size, marketMeta.AtomicResolution)
+	if err != nil {
+		return nil, err
+	}
+
+	// Safe conversion: check for overflow before converting
+	if quantums > math.MaxInt64 {
+		return nil, fmt.Errorf("quantums value %d exceeds maximum int64 value", quantums)
+	}
+
+	return big.NewInt(int64(quantums)), nil
 }
 
 // QuantizePrice converts a price to subticks (dYdX internal representation)
-func (t *TxBuilder) QuantizePrice(price float64, market string) (*big.Int, error) {
-	// This is a placeholder implementation
-	// In a real implementation, you would fetch market configuration
-	// and apply the correct quantization logic
-	subticks := big.NewInt(int64(price * 1000000)) // Mock: 6 decimal places
-	return subticks, nil
+func (t *TxBuilder) QuantizePrice(ctx context.Context, price float64, market string) (*big.Int, error) {
+	// Fetch market configuration
+	marketMeta, err := t.marketCache.GetMarket(ctx, market)
+	if err != nil {
+		t.logger.Error("Failed to fetch market configuration",
+			zap.String("market", market),
+			zap.Error(err))
+		return nil, err
+	}
+
+	// Use message builder to quantize
+	subticks, err := t.messageBuilder.QuantizePrice(price, marketMeta.SubticksPerTick)
+	if err != nil {
+		return nil, err
+	}
+
+	// Safe conversion: check for overflow before converting
+	if subticks > math.MaxInt64 {
+		return nil, fmt.Errorf("subticks value %d exceeds maximum int64 value", subticks)
+	}
+
+	return big.NewInt(int64(subticks)), nil
 }
 
 // Helper functions

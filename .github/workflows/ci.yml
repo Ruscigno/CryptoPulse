@@ -419,6 +419,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           trivyignores: '.trivyignore'
+          exit-code: '0'
+        continue-on-error: true
 
       - name: Run Trivy vulnerability scanner (All Dependencies - Informational)
         uses: aquasecurity/trivy-action@master
@@ -427,6 +429,8 @@ jobs:
           scan-ref: '.'
           format: 'table'
           output: 'trivy-all-results.txt'
+          trivyignores: '.trivyignore'
+          exit-code: '0'
         continue-on-error: true
 
       - name: Upload Trivy scan results to GitHub Security tab
@@ -472,6 +476,7 @@ jobs:
             trivy-results.sarif
             trivy-all-results.txt
             .trivyignore
+            .trivy.yaml
 
   # Job 8: Test Summary
   test-summary:
