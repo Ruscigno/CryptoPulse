@@ -6,6 +6,13 @@
 # TEST-ONLY DEPENDENCIES (not in production builds)
 CVE-2025-30153
 
+# FIXED VULNERABILITIES
+# The following vulnerabilities have been fixed by updating dependencies:
+# - CVE-2025-27152 (axios SSRF) - FIXED by updating axios to 1.12.2
+# - CVE-2025-58754 (axios DoS) - FIXED by updating axios to 1.12.2
+# - CVE-2023-45857 (axios cookie exposure) - FIXED by updating axios to 1.12.2
+# See scripts/obtain-testnet-funds-via-faucet/package.json for details
+
 # PRODUCTION DEPENDENCY VULNERABILITIES
 # These are mitigated by our security controls or are low-risk
 
@@ -27,3 +34,7 @@ CVE-2025-30153
 
 # HTTP and networking (gorilla, grpc)
 # These are well-maintained and secure
+
+# Node.js dependencies (scripts/obtain-testnet-funds-via-faucet)
+# axios: Updated to 1.12.2 to fix SSRF, DoS, and cookie exposure vulnerabilities
+# @dydxprotocol/v4-client-js: Updated to 3.0.7 for latest security patches

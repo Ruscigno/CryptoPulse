@@ -9,8 +9,11 @@ importers:
   .:
     dependencies:
       '@dydxprotocol/v4-client-js':
-        specifier: ^3.0.3
-        version: 3.0.3
+        specifier: ^3.0.7
+        version: 3.0.7
+      axios:
+        specifier: ^1.8.2
+        version: 1.12.2
 
 packages:
 
@@ -30,6 +33,7 @@ packages:
 
   '@cosmjs/crypto@0.32.4':
     resolution: {integrity: sha512-zicjGU051LF1V9v7bp8p7ovq+VyC91xlaHdsFOTo2oVry3KQikp8L/81RkXmUIT8FxMwdx1T7DmFwVQikcSDIw==}
+    deprecated: This uses elliptic for cryptographic operations, which contains several security-relevant bugs. To what degree this affects your application is something you need to carefully investigate. See https://github.com/cosmos/cosmjs/issues/1708 for further pointers. Starting with version 0.34.0 the cryptographic library has been replaced. However, private keys might still be at risk.
 
   '@cosmjs/encoding@0.32.4':
     resolution: {integrity: sha512-tjvaEy6ZGxJchiizzTn7HVRiyTg1i4CObRRaTRPknm5EalE13SV+TCHq38gIDfyUeden4fCuaBVEdBR5+ti7Hw==}
@@ -58,8 +62,8 @@ packages:
   '@cosmjs/utils@0.32.4':
     resolution: {integrity: sha512-D1Yc+Zy8oL/hkUkFUL/bwxvuDBzRGpc4cF7/SkdhxX4iHpSLgdOuTt1mhCh9+kl6NQREy9t7SYZ6xeW5gFe60w==}
 
-  '@dydxprotocol/v4-client-js@3.0.3':
-    resolution: {integrity: sha512-1g0gTHVsEd/GDPeXIGwBfyznAghI4rQm6aO2g1lYuKYOcP2M7UzPhAV0a5ehzqsKyI3eYzsMgeSwX71k38Es0g==}
+  '@dydxprotocol/v4-client-js@3.0.7':
+    resolution: {integrity: sha512-zSNMstCW8BR//BmbbGQZyXdXH/3d1j+ASO4cjsEssiWNVIlS8IT5E//D3Q36c3blabJB3ONadvBJmrvkiRV8pA==}
 
   '@dydxprotocol/v4-proto@9.0.0':
     resolution: {integrity: sha512-2ICtvYx90aYxeIxzWB3Fs3krra/wWw6zf5mxVEplXU51JX/Gtbv/LY5A6WWxl1tPQ1Wl8PUMO8IzN1Y3e8Zhvg==}
@@ -515,7 +519,7 @@ snapshots:
 
   '@cosmjs/utils@0.32.4': {}
 
-  '@dydxprotocol/v4-client-js@3.0.3':
+  '@dydxprotocol/v4-client-js@3.0.7':
     dependencies:
       '@cosmjs/amino': 0.32.4
       '@cosmjs/encoding': 0.32.4
