@@ -12,6 +12,11 @@
 		"@dydxprotocol/v4-client-js": "^3.0.7",
 		"axios": "^1.8.2"
 	},
+	"pnpm": {
+		"overrides": {
+			"axios": "^1.8.2"
+		}
+	},
 	"engines": {
 		"node": ">=18.0.0"
 	}
