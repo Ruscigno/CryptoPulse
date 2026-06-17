@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -78,13 +80,39 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid match mode: "+req.Match, http.StatusBadRequest)
 		return
 	}
+	if err := validateIndicators(req.Indicators); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	result, err := s.scr.Screen(r.Context(), req)
 	if err != nil {
-		http.Error(w, "screen failed: "+err.Error(), http.StatusInternalServerError)
+		// Log the detail server-side; don't leak internals to the client.
+		log.Printf("screen failed: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, toDTO(result, req))
+}
+
+// validateIndicators rejects unknown or duplicate indicator names, bounding the
+// per-request work (consistent with the symbols/timeframes validation).
+func validateIndicators(inds []string) error {
+	allowed := make(map[string]bool, len(screener.AllIndicators))
+	for _, name := range screener.AllIndicators {
+		allowed[name] = true
+	}
+	seen := make(map[string]bool, len(inds))
+	for _, name := range inds {
+		if !allowed[name] {
+			return fmt.Errorf("unknown indicator: %s", name)
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate indicator: %s", name)
+		}
+		seen[name] = true
+	}
+	return nil
 }
 
 // ---- DTOs (stable JSON shape, decoupled from internal types) ----

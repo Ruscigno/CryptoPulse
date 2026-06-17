@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +190,41 @@ func TestScreenResponseShapeAndWarnings(t *testing.T) {
 	}
 	if len(body.Warnings) != 1 || body.Warnings[0].Symbol != "TSLA" || body.Warnings[0].Message == "" {
 		t.Errorf("warnings = %+v", body.Warnings)
+	}
+}
+
+func TestScreenRejectsUnknownAndDuplicateIndicators(t *testing.T) {
+	srv := NewServer(&fakeScreener{}, &fakePinger{}, testCfg())
+	for _, q := range []string{"indicators=bogus", "indicators=rsi,rsi"} {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen?"+q, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", q, rec.Code)
+		}
+	}
+}
+
+// erroringScreener always fails, to exercise the 500 path.
+type erroringScreener struct{}
+
+func (erroringScreener) Screen(context.Context, screener.Request) (screener.Result, error) {
+	return screener.Result{}, errBoom
+}
+
+var errBoom = boomErr("internal detail that must not leak")
+
+type boomErr string
+
+func (e boomErr) Error() string { return string(e) }
+
+func TestScreenInternalErrorIsGeneric(t *testing.T) {
+	srv := NewServer(erroringScreener{}, &fakePinger{}, testCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "internal detail") {
+		t.Errorf("response leaked internal error: %q", rec.Body.String())
 	}
 }
