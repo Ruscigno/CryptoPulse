@@ -53,7 +53,15 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+// reqError is a client-facing request error with an HTTP status.
+type reqError struct {
+	status int
+	msg    string
+}
+
+// parseRequest builds a screener.Request from the query string (each param
+// defaulting to config) and validates it. Shared by /screen and /matches.
+func (s *Server) parseRequest(r *http.Request) (screener.Request, *reqError) {
 	req := screener.Request{
 		Symbols:    csvOrDefault(r.URL.Query().Get("symbols"), s.cfg.Stocks),
 		Timeframes: csvOrDefault(r.URL.Query().Get("timeframes"), s.cfg.Timeframes),
@@ -62,8 +70,7 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, tf := range req.Timeframes {
 		if _, ok := timeframe.Get(tf); !ok {
-			http.Error(w, "unknown timeframe: "+tf, http.StatusBadRequest)
-			return
+			return req, &reqError{http.StatusBadRequest, "unknown timeframe: " + tf}
 		}
 	}
 	allowed := make(map[string]bool, len(s.cfg.Stocks))
@@ -72,19 +79,24 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, sym := range req.Symbols {
 		if !allowed[sym] {
-			http.Error(w, "unknown symbol: "+sym, http.StatusBadRequest)
-			return
+			return req, &reqError{http.StatusBadRequest, "unknown symbol: " + sym}
 		}
 	}
 	if !match.Valid(req.Match) {
-		http.Error(w, "invalid match mode: "+req.Match, http.StatusBadRequest)
-		return
+		return req, &reqError{http.StatusBadRequest, "invalid match mode: " + req.Match}
 	}
 	if err := validateIndicators(req.Indicators); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		return req, &reqError{http.StatusBadRequest, err.Error()}
+	}
+	return req, nil
+}
+
+func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+	req, rerr := s.parseRequest(r)
+	if rerr != nil {
+		http.Error(w, rerr.msg, rerr.status)
 		return
 	}
-
 	result, err := s.scr.Screen(r.Context(), req)
 	if err != nil {
 		// Log the detail server-side; don't leak internals to the client.
