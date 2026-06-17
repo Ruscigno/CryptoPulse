@@ -41,6 +41,11 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bound the pool so concurrent /screen requests plus the collector cannot
+	// exhaust Postgres max_connections (database/sql defaults to unlimited).
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}

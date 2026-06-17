@@ -12,6 +12,10 @@ import (
 
 const defaultBaseURL = "https://query1.finance.yahoo.com/v8/finance/chart/"
 
+// maxResponseBytes caps the chart response read to guard against unbounded
+// bodies from this unofficial upstream (OOM protection).
+const maxResponseBytes = 25 << 20 // 25 MiB
+
 // Candle is one OHLCV row from Yahoo.
 type Candle struct {
 	Time   time.Time
@@ -104,7 +108,9 @@ func (c *Client) attempt(ctx context.Context, u, symbol string) (candles []Candl
 		return nil, true, err // transport/network error
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	// Cap the body: this is an unofficial upstream, so a hostile/compromised
+	// response must not be able to exhaust memory.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, true, err
 	}

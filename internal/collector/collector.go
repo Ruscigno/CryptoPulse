@@ -72,23 +72,25 @@ func dropUnclosed(candles []yahoo.Candle, barDur time.Duration, now time.Time) [
 // upserts the bars. Per-item errors are logged and collected, not fatal.
 func (c *Collector) collectTimeframes(ctx context.Context, tfNames []string) []error {
 	var errs []error
-	now := time.Now()
 	for _, symbol := range c.cfg.Stocks {
 		for _, tfName := range tfNames {
 			tf, _ := timeframe.Get(tfName)
 			from, _, err := c.store.LastBarTime(ctx, symbol, tfName)
 			if err != nil {
+				log.Printf("collect %s %s: last bar time: %v", symbol, tfName, err)
 				errs = append(errs, err)
 				continue
 			}
 			candles, err := c.src.Fetch(ctx, symbol, tf.YahooInterval, from)
 			if err != nil {
-				log.Printf("collect %s %s: %v", symbol, tfName, err)
+				log.Printf("collect %s %s: fetch: %v", symbol, tfName, err)
 				errs = append(errs, err)
 				continue
 			}
 			if c.cfg.Collector.UseClosedBarsOnly {
-				candles = dropUnclosed(candles, tf.BarDuration, now)
+				// Capture now per item so a slow loop doesn't misjudge which
+				// trailing bar is still forming.
+				candles = dropUnclosed(candles, tf.BarDuration, time.Now())
 			}
 			bars := make([]storage.Bar, 0, len(candles))
 			for _, cd := range candles {
@@ -98,6 +100,7 @@ func (c *Collector) collectTimeframes(ctx context.Context, tfNames []string) []e
 				})
 			}
 			if err := c.store.UpsertBars(ctx, bars); err != nil {
+				log.Printf("collect %s %s: upsert: %v", symbol, tfName, err)
 				errs = append(errs, err)
 				continue
 			}
