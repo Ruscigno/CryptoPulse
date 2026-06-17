@@ -17,20 +17,24 @@ type Duration time.Duration
 
 func (d *Duration) parse(s string) error {
 	s = strings.TrimSpace(s)
-	mult := map[string]time.Duration{
-		"mo": 30 * 24 * time.Hour,
-		"wk": 7 * 24 * time.Hour,
-		"d":  24 * time.Hour,
-		"y":  365 * 24 * time.Hour,
+	type unit struct {
+		suffix string
+		dur    time.Duration
 	}
-	for suffix, unit := range mult {
-		if strings.HasSuffix(s, suffix) {
-			n, err := strconv.Atoi(strings.TrimSuffix(s, suffix))
-			if err != nil {
-				return fmt.Errorf("invalid duration %q: %w", s, err)
+	// Longest-first so e.g. "mo" is matched before any shorter overlap.
+	units := []unit{
+		{"mo", 30 * 24 * time.Hour},
+		{"wk", 7 * 24 * time.Hour},
+		{"d", 24 * time.Hour},
+		{"y", 365 * 24 * time.Hour},
+	}
+	for _, u := range units {
+		if strings.HasSuffix(s, u.suffix) {
+			if n, err := strconv.Atoi(strings.TrimSuffix(s, u.suffix)); err == nil {
+				*d = Duration(time.Duration(n) * u.dur)
+				return nil
 			}
-			*d = Duration(time.Duration(n) * unit)
-			return nil
+			break // prefix not an integer; fall through to standard parsing
 		}
 	}
 	parsed, err := time.ParseDuration(s)
