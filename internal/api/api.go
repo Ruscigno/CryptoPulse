@@ -38,6 +38,7 @@ func NewServer(scr ScreenRunner, db Pinger, cfg *config.Config) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/screen", s.handleScreen)
+	mux.HandleFunc("/matches", s.handleMatches)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	return mux
 }
@@ -105,6 +106,21 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, toDTO(result, req))
+}
+
+func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request) {
+	req, rerr := s.parseRequest(r)
+	if rerr != nil {
+		http.Error(w, rerr.msg, rerr.status)
+		return
+	}
+	result, err := s.scr.Screen(r.Context(), req)
+	if err != nil {
+		log.Printf("matches failed: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, toMatchesDTO(result, req))
 }
 
 // validateIndicators rejects unknown or duplicate indicator names, bounding the
@@ -237,6 +253,31 @@ func toDTO(res screener.Result, req screener.Request) responseDTO {
 		}
 		out.Results = append(out.Results, rd)
 	}
+	out.Warnings = make([]warningDTO, 0, len(res.Warnings))
+	for _, wn := range res.Warnings {
+		out.Warnings = append(out.Warnings, warningDTO(wn))
+	}
+	return out
+}
+
+type matchesResponseDTO struct {
+	AsOf     time.Time `json:"as_of"`
+	Criteria struct {
+		Match      string   `json:"match"`
+		Symbols    int      `json:"symbols"`
+		Timeframes []string `json:"timeframes"`
+	} `json:"criteria"`
+	Matches  []matchDTO   `json:"matches"`
+	Warnings []warningDTO `json:"warnings"`
+}
+
+func toMatchesDTO(res screener.Result, req screener.Request) matchesResponseDTO {
+	var out matchesResponseDTO
+	out.AsOf = time.Now().UTC()
+	out.Criteria.Match = req.Match
+	out.Criteria.Symbols = len(req.Symbols)
+	out.Criteria.Timeframes = req.Timeframes
+	out.Matches = aggregateMatches(res, req)
 	out.Warnings = make([]warningDTO, 0, len(res.Warnings))
 	for _, wn := range res.Warnings {
 		out.Warnings = append(out.Warnings, warningDTO(wn))
