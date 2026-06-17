@@ -15,6 +15,12 @@ import (
 	"github.com/Ruscigno/stock-screener/internal/timeframe"
 )
 
+// trendEpsilon is the dead-band for the rising/falling/flat slope. It is
+// intentionally near-zero: for continuous indicator values an exact tie between
+// two bars is vanishingly rare, so trend is effectively always rising/falling —
+// which is the directional signal we want. "flat" is reserved for genuine
+// equality (e.g. constant/insufficient series). If a wider dead-band is ever
+// needed, promote this to a configurable screening setting.
 const trendEpsilon = 1e-9
 
 type Screener struct {
