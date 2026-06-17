@@ -60,6 +60,7 @@ func validBaseConfig() Config {
 	c.Screening.Match = "any"
 	c.Screening.PivotWindow = 3
 	c.Screening.TrendLookback = 3
+	c.Screening.PeaksToShow = 3
 	c.Indicators.RSI.Length = 14
 	c.Indicators.VolumeOscillator.ShortLength = 5
 	c.Indicators.VolumeOscillator.LongLength = 10
@@ -75,9 +76,12 @@ func TestValidateRules(t *testing.T) {
 	mutate := map[string]func(*Config){
 		"empty stocks":       func(c *Config) { c.Stocks = nil },
 		"empty timeframes":   func(c *Config) { c.Timeframes = nil },
+		"unknown timeframe":  func(c *Config) { c.Timeframes = []string{"1day"} },
 		"bad match":          func(c *Config) { c.Screening.Match = "nope" },
+		"min:0 match":        func(c *Config) { c.Screening.Match = "min:0" },
 		"pivot_window 0":     func(c *Config) { c.Screening.PivotWindow = 0 },
 		"trend_lookback 0":   func(c *Config) { c.Screening.TrendLookback = 0 },
+		"peaks_to_show 0":    func(c *Config) { c.Screening.PeaksToShow = 0 },
 		"rsi length 1":       func(c *Config) { c.Indicators.RSI.Length = 1 },
 		"volosc short>=long": func(c *Config) { c.Indicators.VolumeOscillator.ShortLength = 10 },
 		"distance length 1":  func(c *Config) { c.Indicators.DistanceFromMA.Length = 1 },

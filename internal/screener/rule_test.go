@@ -20,23 +20,12 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-func TestQualifies(t *testing.T) {
-	if !qualifies(1, 3, "any") {
-		t.Error("any: 1 trigger should qualify")
-	}
-	if qualifies(0, 3, "any") {
-		t.Error("any: 0 triggers should not qualify")
-	}
-	if !qualifies(3, 3, "all") {
-		t.Error("all: 3/3 should qualify")
-	}
-	if qualifies(2, 3, "all") {
-		t.Error("all: 2/3 should not qualify")
-	}
-	if !qualifies(2, 3, "min:2") {
-		t.Error("min:2: 2 triggers should qualify")
-	}
-	if qualifies(1, 3, "min:2") {
-		t.Error("min:2: 1 trigger should not qualify")
+func TestClassifyOverlapPrefersHigh(t *testing.T) {
+	// Overlapping pivots (min peak 40 <= max valley 60): a value of 50 satisfies
+	// both >= min(peaks) and <= max(valleys); precedence resolves to "high".
+	peaks := []extrema.Pivot{{Index: 1, Value: 40}}
+	valleys := []extrema.Pivot{{Index: 2, Value: 60}}
+	if z := classify(50, peaks, valleys); z != "high" {
+		t.Errorf("classify(50) = %q, want high (precedence)", z)
 	}
 }

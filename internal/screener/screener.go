@@ -8,6 +8,7 @@ import (
 	"github.com/Ruscigno/stock-screener/internal/config"
 	"github.com/Ruscigno/stock-screener/internal/extrema"
 	"github.com/Ruscigno/stock-screener/internal/indicators"
+	"github.com/Ruscigno/stock-screener/internal/match"
 	"github.com/Ruscigno/stock-screener/internal/resample"
 	"github.com/Ruscigno/stock-screener/internal/storage"
 	"github.com/Ruscigno/stock-screener/internal/timeframe"
@@ -108,7 +109,7 @@ func (s *Screener) evaluate(symbol, tfName string, bars []storage.Bar, req Reque
 		}
 	}
 
-	if !qualifies(len(triggered), len(req.Indicators), req.Match) {
+	if !match.Qualifies(len(triggered), len(req.Indicators), req.Match) {
 		return nil, warns
 	}
 	last := bars[len(bars)-1]

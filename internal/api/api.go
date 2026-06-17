@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Ruscigno/stock-screener/internal/config"
+	"github.com/Ruscigno/stock-screener/internal/match"
 	"github.com/Ruscigno/stock-screener/internal/screener"
 	"github.com/Ruscigno/stock-screener/internal/timeframe"
 )
@@ -74,7 +74,7 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !validMatch(req.Match) {
+	if !match.Valid(req.Match) {
 		http.Error(w, "invalid match mode: "+req.Match, http.StatusBadRequest)
 		return
 	}
@@ -185,15 +185,4 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
-}
-
-func validMatch(m string) bool {
-	if m == "any" || m == "all" {
-		return true
-	}
-	if strings.HasPrefix(m, "min:") {
-		n, err := strconv.Atoi(strings.TrimPrefix(m, "min:"))
-		return err == nil && n >= 1
-	}
-	return false
 }

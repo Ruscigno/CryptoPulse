@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Ruscigno/stock-screener/internal/match"
+	"github.com/Ruscigno/stock-screener/internal/timeframe"
 	"gopkg.in/yaml.v3"
 )
 
@@ -119,7 +121,12 @@ func (c *Config) validate() error {
 	if len(c.Timeframes) == 0 {
 		return fmt.Errorf("config: timeframes must not be empty")
 	}
-	if !validMatch(c.Screening.Match) {
+	for _, tf := range c.Timeframes {
+		if _, ok := timeframe.Get(tf); !ok {
+			return fmt.Errorf("config: unknown timeframe %q", tf)
+		}
+	}
+	if !match.Valid(c.Screening.Match) {
 		return fmt.Errorf("config: invalid match mode %q (want any|all|min:N)", c.Screening.Match)
 	}
 	if c.Screening.PivotWindow < 1 {
@@ -127,6 +134,9 @@ func (c *Config) validate() error {
 	}
 	if c.Screening.TrendLookback < 1 {
 		return fmt.Errorf("config: trend_lookback must be >= 1")
+	}
+	if c.Screening.PeaksToShow < 1 {
+		return fmt.Errorf("config: peaks_to_show must be >= 1")
 	}
 	if c.Indicators.RSI.Length < 2 {
 		return fmt.Errorf("config: rsi length must be >= 2")
@@ -138,15 +148,4 @@ func (c *Config) validate() error {
 		return fmt.Errorf("config: distance_from_ma length must be >= 2")
 	}
 	return nil
-}
-
-func validMatch(m string) bool {
-	if m == "any" || m == "all" {
-		return true
-	}
-	if strings.HasPrefix(m, "min:") {
-		n, err := strconv.Atoi(strings.TrimPrefix(m, "min:"))
-		return err == nil && n >= 1
-	}
-	return false
 }
