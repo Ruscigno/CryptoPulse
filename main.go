@@ -35,6 +35,9 @@ func main() {
 		log.Fatalf("usage: %s <serve|collect> [--config config.yaml]", os.Args[0])
 	}
 	cmd := os.Args[1]
+	if cmd != "serve" && cmd != "collect" {
+		log.Fatalf("unknown command %q (want serve|collect)", cmd)
+	}
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	cfgPath := fs.String("config", "config.yaml", "path to config file")
 	_ = fs.Parse(os.Args[2:])

@@ -81,3 +81,32 @@ func TestScreenRejectsUnknownTimeframe(t *testing.T) {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }
+
+func TestScreenRejectsBadMinMatch(t *testing.T) {
+	srv := NewServer(&fakeScreener{}, &fakePinger{}, testCfg())
+	for _, m := range []string{"min:0", "min:abc", "min:"} {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen?match="+m, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("match=%q: status = %d, want 400", m, rec.Code)
+		}
+	}
+}
+
+func TestScreenAcceptsValidMin(t *testing.T) {
+	srv := NewServer(&fakeScreener{}, &fakePinger{}, testCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen?match=min:2", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("match=min:2: status = %d, want 200", rec.Code)
+	}
+}
+
+func TestScreenRejectsUnknownSymbol(t *testing.T) {
+	srv := NewServer(&fakeScreener{}, &fakePinger{}, testCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen?symbols=NOTREAL", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for unknown symbol", rec.Code)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +61,16 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 	for _, tf := range req.Timeframes {
 		if _, ok := timeframe.Get(tf); !ok {
 			http.Error(w, "unknown timeframe: "+tf, http.StatusBadRequest)
+			return
+		}
+	}
+	allowed := make(map[string]bool, len(s.cfg.Stocks))
+	for _, sym := range s.cfg.Stocks {
+		allowed[sym] = true
+	}
+	for _, sym := range req.Symbols {
+		if !allowed[sym] {
+			http.Error(w, "unknown symbol: "+sym, http.StatusBadRequest)
 			return
 		}
 	}
@@ -180,5 +191,9 @@ func validMatch(m string) bool {
 	if m == "any" || m == "all" {
 		return true
 	}
-	return strings.HasPrefix(m, "min:")
+	if strings.HasPrefix(m, "min:") {
+		n, err := strconv.Atoi(strings.TrimPrefix(m, "min:"))
+		return err == nil && n >= 1
+	}
+	return false
 }

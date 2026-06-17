@@ -49,12 +49,11 @@ func TestBucketStart4h(t *testing.T) {
 
 func TestBucketStart3d(t *testing.T) {
 	tf, _ := Get("3d")
-	// 3-day buckets anchored to the Unix epoch (1970-01-01 = day 0).
 	in := time.Date(2026, 6, 16, 9, 0, 0, 0, time.UTC)
 	got := tf.BucketStart(in)
-	days := in.Unix() / 86400
-	wantDay := days - days%3
-	want := time.Unix(wantDay*86400, 0).UTC()
+	// 3-day buckets anchored to the Unix epoch; verified literal.
+	// 2026-06-16 is Unix day 20620; 20620 % 3 == 1, so bucket starts at day 20619 = 2026-06-15.
+	want := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Errorf("BucketStart = %v, want %v", got, want)
 	}
