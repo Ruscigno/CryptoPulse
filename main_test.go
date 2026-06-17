@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDSNFromEnv(t *testing.T) {
@@ -88,3 +91,96 @@ func TestRunUsageErrors(t *testing.T) {
 		t.Errorf("bad subcommand: code = %d, want 2", code)
 	}
 }
+
+// fakeHTTPServer lets serveLoop be tested without binding a real port.
+type fakeHTTPServer struct {
+	started  chan struct{}
+	shutdown chan struct{}
+	failErr  error // if set, ListenAndServe returns it immediately
+}
+
+func newFakeHTTPServer() *fakeHTTPServer {
+	return &fakeHTTPServer{started: make(chan struct{}), shutdown: make(chan struct{})}
+}
+
+func (f *fakeHTTPServer) ListenAndServe() error {
+	close(f.started)
+	if f.failErr != nil {
+		return f.failErr
+	}
+	<-f.shutdown
+	return http.ErrServerClosed
+}
+
+func (f *fakeHTTPServer) Shutdown(context.Context) error {
+	close(f.shutdown)
+	return nil
+}
+
+func TestServeLoopDrainsWorkerOnShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := newFakeHTTPServer()
+	ran := make(chan struct{})
+	returned := make(chan struct{})
+	worker := func(c context.Context) {
+		close(ran)
+		<-c.Done() // worker stops when its context is cancelled
+		close(returned)
+	}
+
+	done := make(chan int, 1)
+	go func() { done <- serveLoop(ctx, srv, worker) }()
+
+	<-srv.started
+	<-ran
+	cancel() // trigger graceful shutdown
+
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("code = %d, want 0", code)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("serveLoop did not return after ctx cancel")
+	}
+	select {
+	case <-returned:
+	default:
+		t.Error("worker was not drained before serveLoop returned")
+	}
+}
+
+func TestServeLoopReturns1AndDrainsOnServerError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := newFakeHTTPServer()
+	srv.failErr = errServe
+	returned := make(chan struct{})
+	worker := func(c context.Context) {
+		<-c.Done() // must be cancelled by serveLoop even though ctx wasn't
+		close(returned)
+	}
+
+	done := make(chan int, 1)
+	go func() { done <- serveLoop(ctx, srv, worker) }()
+
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Errorf("code = %d, want 1 on server error", code)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("serveLoop did not return on server error")
+	}
+	select {
+	case <-returned:
+	default:
+		t.Error("worker not drained on server-error path (store.Close race)")
+	}
+}
+
+var errServe = serveErr("listen: address already in use")
+
+type serveErr string
+
+func (e serveErr) Error() string { return string(e) }

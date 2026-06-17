@@ -112,44 +112,64 @@ func run(args []string) int {
 }
 
 func serve(ctx context.Context, cfg *config.Config, store *storage.PostgresStore) int {
-	// Run the collector in-process, but track its goroutine so we can wait for
-	// it to drain before the caller's deferred store.Close() runs (otherwise an
-	// in-flight Fetch/UpsertBars races db.Close on shutdown).
-	var collectorDone chan struct{}
+	var worker func(context.Context)
 	if cfg.Collector.Enabled {
-		col := collector.New(store, yahoo.New(), cfg)
-		collectorDone = make(chan struct{})
-		go func() {
-			col.Run(ctx)
-			close(collectorDone)
-		}()
+		worker = collector.New(store, yahoo.New(), cfg).Run
 	}
-
 	scr := screener.New(store, cfg)
 	srv := api.NewServer(scr, store, cfg)
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	httpSrv := &http.Server{
-		Addr:              addr,
+		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	log.Printf("listening on %s", httpSrv.Addr)
+	return serveLoop(ctx, httpSrv, worker)
+}
+
+// httpServer is the slice of *http.Server that serveLoop needs (so tests can
+// inject a fake).
+type httpServer interface {
+	ListenAndServe() error
+	Shutdown(ctx context.Context) error
+}
+
+// serveLoop runs srv until ctx is cancelled (then gracefully shuts it down) or
+// it fails. The optional background worker runs on a child context and is
+// always cancelled and drained before serveLoop returns — so the caller's
+// deferred store.Close() never races an in-flight collector cycle, on the
+// normal-shutdown path AND the server-error path. Returns a process exit code.
+func serveLoop(ctx context.Context, srv httpServer, worker func(context.Context)) int {
+	workerCtx, cancelWorker := context.WithCancel(ctx)
+	defer cancelWorker()
+
+	var workerDone chan struct{}
+	if worker != nil {
+		workerDone = make(chan struct{})
+		go func() {
+			worker(workerCtx)
+			close(workerDone)
+		}()
+	}
+
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = httpSrv.Shutdown(shutCtx)
+		_ = srv.Shutdown(shutCtx)
 	}()
 
-	log.Printf("listening on %s", addr)
-	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	code := 0
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Printf("server: %v", err)
-		return 1
+		code = 1
 	}
-	if collectorDone != nil {
-		<-collectorDone // drain the collector before store.Close()
+	cancelWorker() // stop the worker even if the server failed before ctx cancel
+	if workerDone != nil {
+		<-workerDone // drain before returning
 	}
-	return 0
+	return code
 }

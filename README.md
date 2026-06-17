@@ -32,6 +32,7 @@ extreme: current value `>=` the lowest of the last 3 peaks (zone `high`) or
 latest value, trend (rising/falling/flat), and last 3 peaks/valleys.
 
 Timeframes `15m,30m,1h,1d,1wk,1mo` are fetched from Yahoo; `4h` and `3d` are
-resampled from `1h`/`1d` at query time.
+resampled from `1h`/`1d` at query time. The authoritative list lives in code
+(`internal/timeframe`); `config.yaml` only selects which are enabled.
 
 See `docs/superpowers/specs/2026-06-16-stock-screener-design.md` for the full design.

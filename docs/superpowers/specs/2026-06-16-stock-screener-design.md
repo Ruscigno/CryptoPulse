@@ -85,6 +85,12 @@ ones fired.
 
 ## 3. Timeframes
 
+> **Canonical source:** the supported timeframes and their properties (native vs
+> derived, Yahoo interval, parent, bar duration) live in code at
+> `internal/timeframe`. The list below is illustrative; `config.yaml` selects
+> which of them are *enabled*. Treat `internal/timeframe` as authoritative if
+> this doc drifts.
+
 Evaluated set: `15m, 30m, 1h, 4h, 1d, 3d, 1wk, 1mo` (here `1m` = one month).
 
 - **Native** (fetched from Yahoo): `15m, 30m, 1h, 1d, 1wk, 1mo` (Yahoo's `60m`
@@ -283,7 +289,7 @@ timeframe order.
     }
   ],
   "warnings": [
-    { "symbol": "TSLA", "timeframe": "15m", "message": "insufficient_data: need 200 bars for EMA200, have 140" }
+    { "symbol": "TSLA", "timeframe": "15m", "message": "insufficient_data: distance_from_ma needs 200 bars, have 140" }
   ]
 }
 ```
