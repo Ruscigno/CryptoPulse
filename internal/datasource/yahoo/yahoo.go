@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const baseURL = "https://query1.finance.yahoo.com/v8/finance/chart/"
+const defaultBaseURL = "https://query1.finance.yahoo.com/v8/finance/chart/"
 
 // Candle is one OHLCV row from Yahoo.
 type Candle struct {
@@ -23,14 +23,20 @@ type Candle struct {
 }
 
 type Client struct {
-	http      *http.Client
-	userAgent string
+	http        *http.Client
+	userAgent   string
+	baseURL     string
+	maxAttempts int
+	baseDelay   time.Duration
 }
 
 func New() *Client {
 	return &Client{
-		http:      &http.Client{Timeout: 30 * time.Second},
-		userAgent: "Mozilla/5.0 (stock-screener)",
+		http:        &http.Client{Timeout: 30 * time.Second},
+		userAgent:   "Mozilla/5.0 (stock-screener)",
+		baseURL:     defaultBaseURL,
+		maxAttempts: 3,
+		baseDelay:   500 * time.Millisecond,
 	}
 }
 
@@ -49,7 +55,9 @@ func rangeFor(interval string) string {
 
 // Fetch returns candles for a symbol at a Yahoo interval. If `from` is non-zero
 // it requests period1=from..now (incremental); otherwise it uses the default
-// range for the interval.
+// range for the interval. Transient failures (transport errors, HTTP 429, and
+// 5xx) are retried with exponential backoff up to maxAttempts; the backoff
+// respects ctx cancellation.
 func (c *Client) Fetch(ctx context.Context, symbol, interval string, from time.Time) ([]Candle, error) {
 	q := url.Values{}
 	q.Set("interval", interval)
@@ -59,25 +67,58 @@ func (c *Client) Fetch(ctx context.Context, symbol, interval string, from time.T
 		q.Set("period1", fmt.Sprintf("%d", from.Unix()))
 		q.Set("period2", fmt.Sprintf("%d", time.Now().Unix()))
 	}
-	u := baseURL + url.PathEscape(symbol) + "?" + q.Encode()
+	u := c.baseURL + url.PathEscape(symbol) + "?" + q.Encode()
+
+	var lastErr error
+	for attempt := 0; attempt < c.maxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := c.baseDelay << (attempt - 1) // exponential backoff
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		candles, retryable, err := c.attempt(ctx, u, symbol)
+		if err == nil {
+			return candles, nil
+		}
+		lastErr = err
+		if !retryable {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("yahoo %s: giving up after %d attempts: %w", symbol, c.maxAttempts, lastErr)
+}
+
+// attempt performs one HTTP request. retryable is true for failures worth
+// retrying (transport error, HTTP 429, HTTP 5xx).
+func (c *Client) attempt(ctx context.Context, u, symbol string) (candles []Candle, retryable bool, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, true, err // transport/network error
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, true, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return nil, true, fmt.Errorf("yahoo %s: status %d", symbol, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("yahoo %s: status %d", symbol, resp.StatusCode)
+		return nil, false, fmt.Errorf("yahoo %s: status %d", symbol, resp.StatusCode)
 	}
-	return parseChart(body)
+	candles, err = parseChart(body)
+	if err != nil {
+		return nil, false, err
+	}
+	return candles, false, nil
 }
 
 type chartResponse struct {
