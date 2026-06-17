@@ -1,27 +1,23 @@
 {
     "version": "0.2.0",
     "configurations": [
-      {
-        "name": "Python: Run App",
-        "type": "debugpy",
-        "request": "launch",
-        "program": "${workspaceFolder}/${relativeFile}",
-        "console": "integratedTerminal",
-        "args": [
-          "start",
-          "--stock-file",
-          "${workspaceFolder}/stocks.json", 
-          "--workers",
-          "4"
-        ],
-        "env": {
-          "DB_USER": "your_db_user",
-          "DB_PASSWORD": "your_db_password",
-          "DB_HOST": "localhost",
-          "DB_PORT": "50432",
-          "DB_NAME": "stock_monitoring"
+        {
+            "name": "Run Go App",
+            "type": "go",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.go",
+            "args": [
+                "${workspaceFolder}/stocks.json"
+            ],
+            "env": {
+                "DB_USER": "your_db_user",
+                "DB_PASSWORD": "your_db_password",
+                "DB_HOST": "localhost",
+                "DB_PORT": "50432",
+                "DB_NAME": "stock_monitoring"
+            },
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
         }
-      }
     ]
-  }
-  
+}

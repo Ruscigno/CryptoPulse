@@ -1,0 +1,4 @@
+github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
+github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8 h1:xjHmqImiMRzNrbkazP9e+EyplWAk36Gfza1IeLag72g=
+github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8/go.mod h1:XkWzl73UMsPUypTth1MHbTnSW6ydpD5qHdearJq3eaI=
