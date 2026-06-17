@@ -62,14 +62,13 @@ func dropUnclosed(candles []yahoo.Candle, barDur time.Duration, now time.Time) [
 	return out
 }
 
-// CollectOnce fetches every (symbol, native TF) once and upserts the bars.
-// Per-item errors are logged and collected, not fatal.
-func (c *Collector) CollectOnce(ctx context.Context) []error {
+// collectTimeframes fetches every (symbol, tfName) for the given TF names and
+// upserts the bars. Per-item errors are logged and collected, not fatal.
+func (c *Collector) collectTimeframes(ctx context.Context, tfNames []string) []error {
 	var errs []error
-	natives := nativeTimeframes(c.cfg.Timeframes)
 	now := time.Now()
 	for _, symbol := range c.cfg.Stocks {
-		for _, tfName := range natives {
+		for _, tfName := range tfNames {
 			tf, _ := timeframe.Get(tfName)
 			from, _, err := c.store.LastBarTime(ctx, symbol, tfName)
 			if err != nil {
@@ -103,22 +102,63 @@ func (c *Collector) CollectOnce(ctx context.Context) []error {
 	return errs
 }
 
-// Run collects on a ticker until ctx is cancelled. Uses the intraday refresh
-// cadence as the loop tick (the smaller of the two).
-func (c *Collector) Run(ctx context.Context) {
-	tick := time.Duration(c.cfg.Collector.Refresh.Intraday)
-	if tick <= 0 {
-		tick = 15 * time.Minute
+// CollectOnce fetches every (symbol, native TF) once and upserts the bars.
+// Per-item errors are logged and collected, not fatal.
+func (c *Collector) CollectOnce(ctx context.Context) []error {
+	return c.collectTimeframes(ctx, nativeTimeframes(c.cfg.Timeframes))
+}
+
+// splitByCadence partitions native timeframes into intraday (bar < 24h) and
+// daily (bar >= 24h) groups, preserving order.
+func splitByCadence(tfNames []string) (intraday, daily []string) {
+	for _, name := range tfNames {
+		tf, ok := timeframe.Get(name)
+		if !ok {
+			continue
+		}
+		if tf.BarDuration < 24*time.Hour {
+			intraday = append(intraday, name)
+		} else {
+			daily = append(daily, name)
+		}
 	}
-	c.CollectOnce(ctx)
-	t := time.NewTicker(tick)
-	defer t.Stop()
+	return intraday, daily
+}
+
+// Run collects on two cadences until ctx is cancelled: intraday timeframes on
+// Refresh.Intraday, daily-and-longer timeframes on Refresh.Daily. It does one
+// full pass immediately on start.
+func (c *Collector) Run(ctx context.Context) {
+	natives := nativeTimeframes(c.cfg.Timeframes)
+	intraday, daily := splitByCadence(natives)
+
+	intradayTick := time.Duration(c.cfg.Collector.Refresh.Intraday)
+	if intradayTick <= 0 {
+		intradayTick = 15 * time.Minute
+	}
+	dailyTick := time.Duration(c.cfg.Collector.Refresh.Daily)
+	if dailyTick <= 0 {
+		dailyTick = 6 * time.Hour
+	}
+
+	c.collectTimeframes(ctx, natives) // initial full pass
+
+	it := time.NewTicker(intradayTick)
+	defer it.Stop()
+	dt := time.NewTicker(dailyTick)
+	defer dt.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-			c.CollectOnce(ctx)
+		case <-it.C:
+			if len(intraday) > 0 {
+				c.collectTimeframes(ctx, intraday)
+			}
+		case <-dt.C:
+			if len(daily) > 0 {
+				c.collectTimeframes(ctx, daily)
+			}
 		}
 	}
 }

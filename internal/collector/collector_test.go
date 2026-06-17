@@ -35,3 +35,25 @@ func TestDropUnclosed(t *testing.T) {
 		t.Errorf("kept wrong bar: %+v", out[0])
 	}
 }
+
+func TestSplitByCadence(t *testing.T) {
+	intraday, daily := splitByCadence([]string{"15m", "1h", "1d", "1wk", "1mo"})
+	wantIntra := map[string]bool{"15m": true, "1h": true}
+	wantDaily := map[string]bool{"1d": true, "1wk": true, "1mo": true}
+	if len(intraday) != len(wantIntra) {
+		t.Fatalf("intraday = %v, want %v", intraday, wantIntra)
+	}
+	for _, tf := range intraday {
+		if !wantIntra[tf] {
+			t.Errorf("unexpected intraday tf %q", tf)
+		}
+	}
+	if len(daily) != len(wantDaily) {
+		t.Fatalf("daily = %v, want %v", daily, wantDaily)
+	}
+	for _, tf := range daily {
+		if !wantDaily[tf] {
+			t.Errorf("unexpected daily tf %q", tf)
+		}
+	}
+}
