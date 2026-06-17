@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/Ruscigno/stock-screener/internal/config"
 	"github.com/Ruscigno/stock-screener/internal/extrema"
@@ -54,10 +55,13 @@ func (s *Screener) Screen(ctx context.Context, req Request) (Result, error) {
 }
 
 func (s *Screener) loadBars(ctx context.Context, symbol string, tf timeframe.TF) ([]storage.Bar, error) {
+	need := requiredBars(s.cfg, tf)
 	if tf.Native {
-		return s.store.GetBars(ctx, symbol, tf.Name, 0)
+		return s.store.GetBars(ctx, symbol, tf.Name, need)
 	}
-	parent, err := s.store.GetBars(ctx, symbol, tf.Parent, 0)
+	// Derived TFs aggregate GroupSize parent bars each, so fetch proportionally
+	// more parent bars before resampling.
+	parent, err := s.store.GetBars(ctx, symbol, tf.Parent, need*tf.GroupSize)
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +69,35 @@ func (s *Screener) loadBars(ctx context.Context, symbol string, tf timeframe.TF)
 		return resample.ToClosed(parent, tf.Name), nil
 	}
 	return resample.To(parent, tf.Name), nil
+}
+
+// requiredBars is how many bars (in tf's own resolution) the screener loads per
+// (symbol, timeframe). It is the larger of:
+//   - the warmup the longest indicator needs plus room to confirm several
+//     pivots (a hard floor, so indicators never come back all-NaN), and
+//   - the peak_lookback window converted to bars (the configured minimum
+//     history to scan for recent pivots).
+//
+// Bounding the load this way keeps each /screen request O(window) instead of
+// O(full stored history).
+func requiredBars(cfg *config.Config, tf timeframe.TF) int {
+	longest := cfg.Indicators.RSI.Length
+	if l := cfg.Indicators.VolumeOscillator.LongLength; l > longest {
+		longest = l
+	}
+	if l := cfg.Indicators.DistanceFromMA.Length; l > longest {
+		longest = l
+	}
+	warmup := longest + (2*cfg.Screening.PivotWindow+1)*(cfg.Screening.PeaksToShow+1) + 50
+
+	lookbackBars := 0
+	if tf.BarDuration > 0 {
+		lookbackBars = int(time.Duration(cfg.Screening.PeakLookback) / tf.BarDuration)
+	}
+	if lookbackBars > warmup {
+		return lookbackBars
+	}
+	return warmup
 }
 
 func (s *Screener) evaluate(symbol, tfName string, bars []storage.Bar, req Request) (*Row, []Warning) {

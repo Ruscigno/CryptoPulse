@@ -7,6 +7,7 @@ import (
 
 	"github.com/Ruscigno/stock-screener/internal/config"
 	"github.com/Ruscigno/stock-screener/internal/storage"
+	"github.com/Ruscigno/stock-screener/internal/timeframe"
 )
 
 // fakeStore returns canned bars for one (symbol, timeframe).
@@ -158,5 +159,70 @@ func TestScreenMatchModes(t *testing.T) {
 	}
 	if len(min2.Rows) != 0 {
 		t.Errorf("match=min:2 with 1 indicator: rows = %d, want 0", len(min2.Rows))
+	}
+}
+
+func TestRequiredBars(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Indicators.RSI.Length = 14
+	cfg.Indicators.VolumeOscillator.LongLength = 10
+	cfg.Indicators.DistanceFromMA.Length = 200
+	cfg.Screening.PivotWindow = 3
+	cfg.Screening.PeaksToShow = 3
+
+	day, _ := timeframe.Get("1d")
+	// peak_lookback 0 -> the warmup floor dominates: 200 + (2*3+1)*(3+1) + 50.
+	warmup := 200 + (2*3+1)*(3+1) + 50
+	if got := requiredBars(cfg, day); got != warmup {
+		t.Errorf("requiredBars (lookback 0) = %d, want %d", got, warmup)
+	}
+	// A 10-year peak_lookback on daily bars dominates the floor.
+	cfg.Screening.PeakLookback = config.Duration(3650 * 24 * time.Hour)
+	if got := requiredBars(cfg, day); got != 3650 {
+		t.Errorf("requiredBars (10y lookback) = %d, want 3650", got)
+	}
+}
+
+// limitRecordingStore records the limit/timeframe of the last GetBars call.
+type limitRecordingStore struct {
+	fakeStore
+	lastLimit int
+	lastTF    string
+}
+
+func (r *limitRecordingStore) GetBars(_ context.Context, _, tf string, limit int) ([]storage.Bar, error) {
+	r.lastLimit = limit
+	r.lastTF = tf
+	return r.bars, nil
+}
+
+func TestLoadBarsBoundsAndScalesDerived(t *testing.T) {
+	cfg := testConfig()
+	// Native: store is asked for exactly requiredBars (bounded, non-zero).
+	natStore := &limitRecordingStore{fakeStore: fakeStore{bars: buildBars([]float64{1, 2, 3})}}
+	s := New(natStore, cfg)
+	_, _ = s.Screen(context.Background(), Request{
+		Symbols: []string{"AAA"}, Timeframes: []string{"1d"}, Match: "any",
+		Indicators: []string{IndDistance},
+	})
+	day, _ := timeframe.Get("1d")
+	if natStore.lastTF != "1d" || natStore.lastLimit != requiredBars(cfg, day) {
+		t.Errorf("native load: tf=%q limit=%d, want 1d/%d", natStore.lastTF, natStore.lastLimit, requiredBars(cfg, day))
+	}
+	if natStore.lastLimit == 0 {
+		t.Error("native load must be bounded (non-zero limit), got 0 (full history)")
+	}
+
+	// Derived 4h: parent "1h" is fetched with GroupSize x the derived need.
+	derStore := &limitRecordingStore{fakeStore: fakeStore{bars: build1hBarsByBucket([]float64{1, 2, 3, 4})}}
+	s2 := New(derStore, cfg)
+	_, _ = s2.Screen(context.Background(), Request{
+		Symbols: []string{"AAA"}, Timeframes: []string{"4h"}, Match: "any",
+		Indicators: []string{IndDistance},
+	})
+	four, _ := timeframe.Get("4h")
+	wantLimit := requiredBars(cfg, four) * four.GroupSize
+	if derStore.lastTF != "1h" || derStore.lastLimit != wantLimit {
+		t.Errorf("derived load: tf=%q limit=%d, want 1h/%d", derStore.lastTF, derStore.lastLimit, wantLimit)
 	}
 }
