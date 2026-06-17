@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Ruscigno/stock-screener/internal/api"
 	"github.com/Ruscigno/stock-screener/internal/collector"
@@ -18,6 +19,9 @@ import (
 	"github.com/Ruscigno/stock-screener/internal/storage"
 )
 
+// dsnFromEnv builds the Postgres DSN from environment variables. TLS mode is
+// configurable via DB_SSLMODE and defaults to "require" (secure); local setups
+// without TLS must opt out explicitly with DB_SSLMODE=disable.
 func dsnFromEnv() (string, error) {
 	u, p, h, port, name := os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
 		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_NAME")
@@ -27,7 +31,11 @@ func dsnFromEnv() (string, error) {
 	if port == "" {
 		port = "5432"
 	}
-	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", u, p, h, port, name), nil
+	sslmode := os.Getenv("DB_SSLMODE")
+	if sslmode == "" {
+		sslmode = "require"
+	}
+	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=%s", u, p, h, port, name, sslmode), nil
 }
 
 func main() {
@@ -76,16 +84,23 @@ func main() {
 		scr := screener.New(store, cfg)
 		srv := api.NewServer(scr, store, cfg)
 		addr := fmt.Sprintf(":%d", cfg.Server.Port)
-		httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
+		httpSrv := &http.Server{
+			Addr:              addr,
+			Handler:           srv.Handler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
 		go func() {
 			<-ctx.Done()
-			_ = httpSrv.Close()
+			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = httpSrv.Shutdown(shutCtx)
 		}()
 		log.Printf("listening on %s", addr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
 		}
-	default:
-		log.Fatalf("unknown command %q (want serve|collect)", cmd)
 	}
 }
