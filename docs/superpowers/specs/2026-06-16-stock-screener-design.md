@@ -136,9 +136,13 @@ Each package is small, single-purpose, and independently testable.
 ### 4.2 Data flow
 
 **Collection (background):** for each (symbol, native TF) → Yahoo fetch →
-upsert into `bars` (closed bars only), on the `collector.refresh` cadence.
-Replaces today's broken infinite re-enqueue worker. Uses a worker pool with a
-Yahoo rate limiter.
+upsert into `bars` (closed bars only). Replaces today's broken infinite
+re-enqueue worker. Collection runs **sequentially with fixed pacing** (a short
+sleep between requests) as a simple rate limit that is gentle on Yahoo's
+unofficial endpoint; intraday and daily timeframes refresh on their own
+cadences (`collector.refresh.intraday` / `.daily`) via separate tickers. (A
+concurrent worker pool is a possible future optimization but unnecessary at this
+scale.)
 
 **Query (`GET /screen`):** for each (symbol, requested TF) → load native bars
 from DB → resample if derived → compute 3 indicators → detect last-3 pivots +
