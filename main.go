@@ -155,11 +155,18 @@ func serveLoop(ctx context.Context, srv httpServer, worker func(context.Context)
 		}()
 	}
 
+	// Retire this goroutine deterministically: on the server-error path ctx may
+	// never be cancelled, so closing stopShutdown on return unblocks it.
+	stopShutdown := make(chan struct{})
+	defer close(stopShutdown)
 	go func() {
-		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutCtx)
+		select {
+		case <-ctx.Done():
+			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutCtx)
+		case <-stopShutdown:
+		}
 	}()
 
 	code := 0

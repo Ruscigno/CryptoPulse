@@ -23,7 +23,8 @@ func (d *Duration) parse(s string) error {
 		suffix string
 		dur    time.Duration
 	}
-	// Longest-first so e.g. "mo" is matched before any shorter overlap.
+	// Calendar suffixes. None is a suffix of another (e.g. "1y" never ends in
+	// "d"), so the check order does not affect matching.
 	units := []unit{
 		{"mo", 30 * 24 * time.Hour},
 		{"wk", 7 * 24 * time.Hour},
