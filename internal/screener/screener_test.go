@@ -87,3 +87,76 @@ func TestScreenInsufficientDataWarns(t *testing.T) {
 		t.Error("expected an insufficient_data warning for RSI")
 	}
 }
+
+// build1hBarsByBucket makes 4 one-hour bars per 4h bucket, all sharing the
+// bucket's close value, starting at a 4h boundary. The resampled 4h close
+// series therefore equals bucketCloses.
+func build1hBarsByBucket(bucketCloses []float64) []storage.Bar {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // 4h-aligned
+	var bars []storage.Bar
+	for k, c := range bucketCloses {
+		for j := 0; j < 4; j++ {
+			ts := t0.Add(time.Duration(k*4+j) * time.Hour)
+			bars = append(bars, storage.Bar{
+				Symbol: "AAA", Timeframe: "1h", Time: ts,
+				Open: c, High: c, Low: c, Close: c, Volume: 100,
+			})
+		}
+	}
+	return bars
+}
+
+func TestScreenDerivedTimeframe(t *testing.T) {
+	// V-shaped 4h closes so distance-from-SMA(3) ends at a low -> triggers.
+	// fakeStore returns these 1h bars for the parent GetBars("1h") call;
+	// the screener must resample to 4h before evaluating.
+	bucketCloses := []float64{10, 12, 14, 12, 10, 12, 14, 16, 14, 12, 10}
+	s := New(&fakeStore{bars: build1hBarsByBucket(bucketCloses)}, testConfig())
+	res, err := s.Screen(context.Background(), Request{
+		Symbols: []string{"AAA"}, Timeframes: []string{"4h"},
+		Match: "any", Indicators: []string{IndDistance},
+	})
+	if err != nil {
+		t.Fatalf("Screen: %v", err)
+	}
+	if len(res.Rows) != 1 {
+		t.Fatalf("rows = %d, want 1 (derived 4h path)", len(res.Rows))
+	}
+	row := res.Rows[0]
+	if row.Timeframe != "4h" {
+		t.Errorf("timeframe = %q, want 4h", row.Timeframe)
+	}
+	// BarTime must be a 4h-aligned resampled bar time, not a raw 1h time.
+	if row.BarTime.Hour()%4 != 0 || row.BarTime.Minute() != 0 {
+		t.Errorf("bar_time %v is not 4h-aligned (resample not applied?)", row.BarTime)
+	}
+}
+
+func TestScreenMatchModes(t *testing.T) {
+	// Distance triggers (1 indicator). match=all with 1 requested -> qualifies.
+	closes := []float64{10, 12, 14, 12, 10, 12, 14, 16, 14, 12, 10}
+	s := New(&fakeStore{bars: buildBars(closes)}, testConfig())
+
+	all, err := s.Screen(context.Background(), Request{
+		Symbols: []string{"AAA"}, Timeframes: []string{"1d"},
+		Match: "all", Indicators: []string{IndDistance},
+	})
+	if err != nil {
+		t.Fatalf("Screen(all): %v", err)
+	}
+	if len(all.Rows) != 1 {
+		t.Errorf("match=all, 1 indicator triggers: rows = %d, want 1", len(all.Rows))
+	}
+
+	// min:2 with only 1 indicator requested -> cannot qualify.
+	min2, err := s.Screen(context.Background(), Request{
+		Symbols: []string{"AAA"}, Timeframes: []string{"1d"},
+		Match: "min:2", Indicators: []string{IndDistance},
+	})
+	if err != nil {
+		t.Fatalf("Screen(min:2): %v", err)
+	}
+	if len(min2.Rows) != 0 {
+		t.Errorf("match=min:2 with 1 indicator: rows = %d, want 0", len(min2.Rows))
+	}
+}

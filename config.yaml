@@ -17,7 +17,7 @@ screening:
   pivot_window: 3
   trend_lookback: 3
   peaks_to_show: 3
-  peak_lookback: 3mo
+  peak_lookback: 3mo    # reserved: minimum-history hint; screener currently scans full stored history
 
 indicators:
   rsi:
