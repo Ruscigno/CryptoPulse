@@ -228,3 +228,34 @@ func TestScreenInternalErrorIsGeneric(t *testing.T) {
 		t.Errorf("response leaked internal error: %q", rec.Body.String())
 	}
 }
+
+func TestAggregateMatches(t *testing.T) {
+	res := screener.Result{
+		Rows: []screener.Row{
+			{Symbol: "AAPL", Timeframe: "1d", Triggered: []string{"rsi", "volume_oscillator"}},
+			{Symbol: "AAPL", Timeframe: "4h", Triggered: []string{"rsi"}},
+			{Symbol: "MSFT", Timeframe: "1d", Triggered: []string{"distance_from_ma"}},
+		},
+	}
+	req := screener.Request{
+		Symbols:    []string{"AAPL", "MSFT", "TSLA"}, // TSLA has no rows -> excluded
+		Timeframes: []string{"1d", "4h"},
+	}
+	got := aggregateMatches(res, req)
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].Symbol != "AAPL" || got[1].Symbol != "MSFT" {
+		t.Fatalf("order = %s,%s, want AAPL,MSFT", got[0].Symbol, got[1].Symbol)
+	}
+	if len(got[0].Timeframes) != 2 || got[0].Timeframes[0] != "1d" || got[0].Timeframes[1] != "4h" {
+		t.Errorf("AAPL timeframes = %v, want [1d 4h]", got[0].Timeframes)
+	}
+	if len(got[0].Indicators) != 2 || got[0].Indicators[0] != "rsi" || got[0].Indicators[1] != "volume_oscillator" {
+		t.Errorf("AAPL indicators = %v, want [rsi volume_oscillator]", got[0].Indicators)
+	}
+	if len(got[1].Indicators) != 1 || got[1].Indicators[0] != "distance_from_ma" {
+		t.Errorf("MSFT indicators = %v, want [distance_from_ma]", got[1].Indicators)
+	}
+}

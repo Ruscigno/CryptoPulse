@@ -129,6 +129,57 @@ func validateIndicators(inds []string) error {
 
 // ---- DTOs (stable JSON shape, decoupled from internal types) ----
 
+type matchDTO struct {
+	Symbol     string   `json:"symbol"`
+	Timeframes []string `json:"timeframes"`
+	Indicators []string `json:"indicators"`
+}
+
+// aggregateMatches folds qualifying (stock, timeframe) rows into one entry per
+// stock: the timeframes where it qualified (in request order) and the union of
+// indicators that triggered (deduped, canonical order). Stocks with no
+// qualifying row are omitted. Result order follows req.Symbols.
+func aggregateMatches(res screener.Result, req screener.Request) []matchDTO {
+	type agg struct {
+		tfSeen  map[string]bool
+		indSeen map[string]bool
+	}
+	bySym := make(map[string]*agg, len(req.Symbols))
+	for _, row := range res.Rows {
+		a := bySym[row.Symbol]
+		if a == nil {
+			a = &agg{tfSeen: map[string]bool{}, indSeen: map[string]bool{}}
+			bySym[row.Symbol] = a
+		}
+		a.tfSeen[row.Timeframe] = true
+		for _, ind := range row.Triggered {
+			a.indSeen[ind] = true
+		}
+	}
+
+	out := make([]matchDTO, 0, len(bySym))
+	for _, sym := range req.Symbols {
+		a := bySym[sym]
+		if a == nil {
+			continue
+		}
+		tfs := make([]string, 0, len(a.tfSeen))
+		for _, tf := range req.Timeframes {
+			if a.tfSeen[tf] {
+				tfs = append(tfs, tf)
+			}
+		}
+		inds := make([]string, 0, len(a.indSeen))
+		for _, name := range screener.AllIndicators {
+			if a.indSeen[name] {
+				inds = append(inds, name)
+			}
+		}
+		out = append(out, matchDTO{Symbol: sym, Timeframes: tfs, Indicators: inds})
+	}
+	return out
+}
+
 type pivotDTO struct {
 	Value float64   `json:"value"`
 	Time  time.Time `json:"time"`
