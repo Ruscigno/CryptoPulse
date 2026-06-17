@@ -110,3 +110,84 @@ func TestScreenRejectsUnknownSymbol(t *testing.T) {
 		t.Errorf("status = %d, want 400 for unknown symbol", rec.Code)
 	}
 }
+
+func TestScreenResponseShapeAndWarnings(t *testing.T) {
+	res := screener.Result{
+		Rows: []screener.Row{{
+			Symbol: "AAPL", Timeframe: "1d",
+			BarTime:   time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+			Price:     198.42,
+			Triggered: []string{"rsi"},
+			Indicators: map[string]screener.IndicatorResult{
+				"rsi": {
+					Latest: 28.3, Trend: "rising", Zone: "low", Triggered: true,
+					Peaks:   []screener.PivotPoint{{Value: 72.1, Time: time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)}},
+					Valleys: []screener.PivotPoint{{Value: 27.5, Time: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)}},
+				},
+			},
+		}},
+		Warnings: []screener.Warning{{Symbol: "TSLA", Timeframe: "1d", Message: "insufficient_data: need 200 bars"}},
+	}
+	srv := NewServer(&fakeScreener{res: res}, &fakePinger{}, testCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/screen?symbols=AAPL&timeframes=1d", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var body struct {
+		Criteria struct {
+			Match      string   `json:"match"`
+			Timeframes []string `json:"timeframes"`
+		} `json:"criteria"`
+		Results []struct {
+			Symbol     string  `json:"symbol"`
+			BarTime    string  `json:"bar_time"`
+			Price      float64 `json:"price"`
+			Indicators map[string]struct {
+				Zone  string `json:"zone"`
+				Trend string `json:"trend"`
+				Peaks []struct {
+					Value float64 `json:"value"`
+					Time  string  `json:"time"`
+				} `json:"peaks"`
+				Valleys []struct {
+					Value float64 `json:"value"`
+				} `json:"valleys"`
+			} `json:"indicators"`
+		} `json:"results"`
+		Warnings []struct {
+			Symbol  string `json:"symbol"`
+			Message string `json:"message"`
+		} `json:"warnings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Criteria.Match != "any" || len(body.Criteria.Timeframes) != 1 || body.Criteria.Timeframes[0] != "1d" {
+		t.Errorf("criteria = %+v", body.Criteria)
+	}
+	if len(body.Results) != 1 {
+		t.Fatalf("results = %d, want 1", len(body.Results))
+	}
+	r := body.Results[0]
+	if r.Price != 198.42 || r.BarTime == "" {
+		t.Errorf("row price/bar_time = %v/%q", r.Price, r.BarTime)
+	}
+	rsi, ok := r.Indicators["rsi"]
+	if !ok {
+		t.Fatal("missing rsi indicator in JSON")
+	}
+	if rsi.Zone != "low" || rsi.Trend != "rising" {
+		t.Errorf("rsi zone/trend = %q/%q", rsi.Zone, rsi.Trend)
+	}
+	if len(rsi.Peaks) != 1 || rsi.Peaks[0].Value != 72.1 || rsi.Peaks[0].Time == "" {
+		t.Errorf("rsi peaks = %+v", rsi.Peaks)
+	}
+	if len(rsi.Valleys) != 1 || rsi.Valleys[0].Value != 27.5 {
+		t.Errorf("rsi valleys = %+v", rsi.Valleys)
+	}
+	if len(body.Warnings) != 1 || body.Warnings[0].Symbol != "TSLA" || body.Warnings[0].Message == "" {
+		t.Errorf("warnings = %+v", body.Warnings)
+	}
+}
