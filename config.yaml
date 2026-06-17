@@ -1,0 +1,35 @@
+server:
+  port: 8080
+
+collector:
+  enabled: true
+  use_closed_bars_only: true
+  refresh:
+    intraday: 15m
+    daily: 6h
+
+stocks: [AAPL, GOOGL, MSFT, TSLA, AMZN]
+
+timeframes: [15m, 30m, 1h, 4h, 1d, 3d, 1wk, 1mo]
+
+screening:
+  match: any
+  pivot_window: 3
+  trend_lookback: 3
+  peaks_to_show: 3
+  peak_lookback: 3mo    # minimum history window scanned for recent pivots; bounds the per-request load (a warmup floor still applies)
+  trend_flat_epsilon: 0 # |Δ| over trend_lookback bars <= this is "flat"; 0 = exact tie only. Raise to widen the flat band.
+
+indicators:
+  rsi:
+    length: 14
+    source: close
+    smoothing: { type: SMA, length: 14, bb_stddev: 2 }
+  volume_oscillator:
+    short_length: 5
+    long_length: 10
+  distance_from_ma:
+    source: close
+    ma_type: EMA
+    length: 200
+    calculation: percent

@@ -1,36 +1,25 @@
-# Build artifacts
-bin/
-tmp/
-cryptopulse
-
-# Go specific
+# Compiled binary (module name) and generic Go build output
+/stock-screener
+*.exe
 *.test
 *.out
+
+# Go workspace / vendor
+/vendor/
+go.work
+go.work.sum
+
+# Environment / secrets — never commit credentials
+.env
+.env.*
+!.env.example
+
+# Coverage
 coverage.out
 coverage.html
 
-# Environment files (NEVER commit credentials)
-.env.local
-.env.preprod
-.env.prod
-.env.testnet
-
-# Logs
-*.log
-build-errors.log
-
-# IDE files
-.vscode/
-.idea/
+# OS / editor cruft
 .DS_Store
-
-# Air hot reload
-.air.toml.local
-
-# Docker volumes data
-postgres-data/
-redis-data/
-prometheus-data/
-grafana-data/
-pr-description.md
-changes.diff
+*.swp
+*~
+.idea/

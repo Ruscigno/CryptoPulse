@@ -1,0 +1,29 @@
+server:
+  port: 8080
+collector:
+  enabled: true
+  use_closed_bars_only: true
+  refresh:
+    intraday: 15m
+    daily: 6h
+stocks: [AAPL, MSFT]
+timeframes: [15m, 1h, 4h, 1d]
+screening:
+  match: any
+  pivot_window: 3
+  trend_lookback: 3
+  peaks_to_show: 3
+  peak_lookback: 3mo
+indicators:
+  rsi:
+    length: 14
+    source: close
+    smoothing: { type: SMA, length: 14, bb_stddev: 2 }
+  volume_oscillator:
+    short_length: 5
+    long_length: 10
+  distance_from_ma:
+    source: close
+    ma_type: EMA
+    length: 200
+    calculation: percent
