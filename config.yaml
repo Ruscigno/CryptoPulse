@@ -18,6 +18,7 @@ screening:
   trend_lookback: 3
   peaks_to_show: 3
   peak_lookback: 3mo    # minimum history window scanned for recent pivots; bounds the per-request load (a warmup floor still applies)
+  trend_flat_epsilon: 0 # |Δ| over trend_lookback bars <= this is "flat"; 0 = exact tie only. Raise to widen the flat band.
 
 indicators:
   rsi:

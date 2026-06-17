@@ -70,11 +70,12 @@ type Config struct {
 	Stocks     []string `yaml:"stocks"`
 	Timeframes []string `yaml:"timeframes"`
 	Screening  struct {
-		Match         string   `yaml:"match"`
-		PivotWindow   int      `yaml:"pivot_window"`
-		TrendLookback int      `yaml:"trend_lookback"`
-		PeaksToShow   int      `yaml:"peaks_to_show"`
-		PeakLookback  Duration `yaml:"peak_lookback"`
+		Match            string   `yaml:"match"`
+		PivotWindow      int      `yaml:"pivot_window"`
+		TrendLookback    int      `yaml:"trend_lookback"`
+		PeaksToShow      int      `yaml:"peaks_to_show"`
+		PeakLookback     Duration `yaml:"peak_lookback"`
+		TrendFlatEpsilon float64  `yaml:"trend_flat_epsilon"`
 	} `yaml:"screening"`
 	Indicators struct {
 		RSI struct {

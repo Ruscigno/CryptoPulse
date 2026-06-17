@@ -15,14 +15,6 @@ import (
 	"github.com/Ruscigno/stock-screener/internal/timeframe"
 )
 
-// trendEpsilon is the dead-band for the rising/falling/flat slope. It is
-// intentionally near-zero: for continuous indicator values an exact tie between
-// two bars is vanishingly rare, so trend is effectively always rising/falling —
-// which is the directional signal we want. "flat" is reserved for genuine
-// equality (e.g. constant/insufficient series). If a wider dead-band is ever
-// needed, promote this to a configurable screening setting.
-const trendEpsilon = 1e-9
-
 type Screener struct {
 	store storage.Store
 	cfg   *config.Config
@@ -128,7 +120,7 @@ func (s *Screener) evaluate(symbol, tfName string, bars []storage.Bar, req Reque
 		idx := lastNonNaNScreener(series)
 		if idx < 0 {
 			warns = append(warns, Warning{symbol, tfName,
-				fmt.Sprintf("insufficient_data: %s has no value (need more bars)", ind)})
+				fmt.Sprintf("insufficient_data: %s needs %d bars, have %d", ind, s.minBars(ind), len(closes))})
 			continue
 		}
 		peaks := extrema.LastN(extrema.FindPeaks(series, w), nShow)
@@ -136,7 +128,7 @@ func (s *Screener) evaluate(symbol, tfName string, bars []storage.Bar, req Reque
 		zone := classify(series[idx], peaks, valleys)
 		ir := IndicatorResult{
 			Latest:    series[idx],
-			Trend:     trend(series, idx, s.cfg.Screening.TrendLookback),
+			Trend:     trend(series, idx, s.cfg.Screening.TrendLookback, s.cfg.Screening.TrendFlatEpsilon),
 			Zone:      zone,
 			Triggered: zone != "neutral",
 			Peaks:     toPoints(peaks, bars),
@@ -174,16 +166,34 @@ func (s *Screener) series(ind string, closes, volumes []float64) []float64 {
 	return nil
 }
 
-func trend(series []float64, idx, lookback int) string {
+// minBars is the minimum number of bars an indicator needs before it produces
+// any value, used for the insufficient_data warning.
+func (s *Screener) minBars(ind string) int {
+	switch ind {
+	case IndRSI:
+		return s.cfg.Indicators.RSI.Length + 1
+	case IndVolOsc:
+		return s.cfg.Indicators.VolumeOscillator.LongLength
+	case IndDistance:
+		return s.cfg.Indicators.DistanceFromMA.Length
+	}
+	return 0
+}
+
+// trend reports the slope direction over the last `lookback` bars. flatEps is
+// the dead-band: |Δ| <= flatEps is "flat". With flatEps == 0 only an exact tie
+// is flat (so for continuous data trend is effectively always rising/falling);
+// set a positive flatEps to widen the flat band.
+func trend(series []float64, idx, lookback int, flatEps float64) string {
 	prev := idx - lookback
 	if prev < 0 || math.IsNaN(series[prev]) {
 		return "flat"
 	}
 	diff := series[idx] - series[prev]
 	switch {
-	case diff > trendEpsilon:
+	case diff > flatEps:
 		return "rising"
-	case diff < -trendEpsilon:
+	case diff < -flatEps:
 		return "falling"
 	default:
 		return "flat"

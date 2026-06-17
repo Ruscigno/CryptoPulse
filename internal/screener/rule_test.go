@@ -29,3 +29,27 @@ func TestClassifyOverlapPrefersHigh(t *testing.T) {
 		t.Errorf("classify(50) = %q, want high (precedence)", z)
 	}
 }
+
+func TestTrend(t *testing.T) {
+	rising := []float64{1, 2, 3}
+	if got := trend(rising, 2, 1, 0); got != "rising" {
+		t.Errorf("rising: got %q", got)
+	}
+	falling := []float64{3, 2, 1}
+	if got := trend(falling, 2, 1, 0); got != "falling" {
+		t.Errorf("falling: got %q", got)
+	}
+	// Exact tie is flat with eps 0.
+	flat := []float64{5, 5}
+	if got := trend(flat, 1, 1, 0); got != "flat" {
+		t.Errorf("flat(eps0): got %q", got)
+	}
+	// Small change becomes flat when within a positive epsilon.
+	small := []float64{100.0, 100.05}
+	if got := trend(small, 1, 1, 0.1); got != "flat" {
+		t.Errorf("flat(eps0.1): got %q", got)
+	}
+	if got := trend(small, 1, 1, 0.0); got != "rising" {
+		t.Errorf("rising(eps0): got %q", got)
+	}
+}
