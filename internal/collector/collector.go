@@ -11,13 +11,19 @@ import (
 	"github.com/Ruscigno/stock-screener/internal/timeframe"
 )
 
+// Fetcher is the market-data source the collector depends on. *yahoo.Client
+// satisfies it; tests supply a fake so collection logic runs without network.
+type Fetcher interface {
+	Fetch(ctx context.Context, symbol, interval string, from time.Time) ([]yahoo.Candle, error)
+}
+
 type Collector struct {
 	store storage.Store
-	src   *yahoo.Client
+	src   Fetcher
 	cfg   *config.Config
 }
 
-func New(store storage.Store, src *yahoo.Client, cfg *config.Config) *Collector {
+func New(store storage.Store, src Fetcher, cfg *config.Config) *Collector {
 	return &Collector{store: store, src: src, cfg: cfg}
 }
 
@@ -96,7 +102,12 @@ func (c *Collector) collectTimeframes(ctx context.Context, tfNames []string) []e
 				continue
 			}
 			log.Printf("collected %s %s: %d bars", symbol, tfName, len(bars))
-			time.Sleep(200 * time.Millisecond) // gentle pacing for Yahoo
+			// Gentle pacing for Yahoo, but abort promptly on shutdown.
+			select {
+			case <-ctx.Done():
+				return errs
+			case <-time.After(200 * time.Millisecond):
+			}
 		}
 	}
 	return errs

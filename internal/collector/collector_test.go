@@ -1,10 +1,13 @@
 package collector
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/Ruscigno/stock-screener/internal/config"
 	"github.com/Ruscigno/stock-screener/internal/datasource/yahoo"
+	"github.com/Ruscigno/stock-screener/internal/storage"
 )
 
 func TestNativeTimeframes(t *testing.T) {
@@ -57,3 +60,85 @@ func TestSplitByCadence(t *testing.T) {
 		}
 	}
 }
+
+// --- fakes for collectTimeframes integration ---
+
+type fakeFetcher struct {
+	candles map[string][]yahoo.Candle // keyed by interval
+	err     error
+	calls   int
+}
+
+func (f *fakeFetcher) Fetch(_ context.Context, _, interval string, _ time.Time) ([]yahoo.Candle, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.candles[interval], nil
+}
+
+type memStore struct {
+	upserts [][]storage.Bar
+}
+
+func (m *memStore) Migrate(context.Context) error { return nil }
+func (m *memStore) UpsertBars(_ context.Context, b []storage.Bar) error {
+	m.upserts = append(m.upserts, b)
+	return nil
+}
+func (m *memStore) GetBars(context.Context, string, string, int) ([]storage.Bar, error) {
+	return nil, nil
+}
+func (m *memStore) LastBarTime(context.Context, string, string) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+func (m *memStore) Ping(context.Context) error { return nil }
+func (m *memStore) Close() error               { return nil }
+
+func testCfg(stocks, tfs []string) *config.Config {
+	c := &config.Config{}
+	c.Stocks = stocks
+	c.Timeframes = tfs
+	c.Collector.UseClosedBarsOnly = false
+	return c
+}
+
+func TestCollectTimeframesUpserts(t *testing.T) {
+	fetch := &fakeFetcher{candles: map[string][]yahoo.Candle{
+		"1d": {{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Open: 1, High: 2, Low: 0, Close: 1.5, Volume: 10}},
+	}}
+	store := &memStore{}
+	c := New(store, fetch, testCfg([]string{"AAA"}, []string{"1d"}))
+
+	errs := c.CollectOnce(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v, want none", errs)
+	}
+	if len(store.upserts) != 1 || len(store.upserts[0]) != 1 {
+		t.Fatalf("upserts = %v, want one batch of one bar", store.upserts)
+	}
+	if got := store.upserts[0][0]; got.Symbol != "AAA" || got.Timeframe != "1d" || got.Close != 1.5 {
+		t.Errorf("bar = %+v", got)
+	}
+}
+
+func TestCollectTimeframesContinuesOnFetchError(t *testing.T) {
+	fetch := &fakeFetcher{err: errTest}
+	store := &memStore{}
+	// two native TFs; both fetches fail but the loop must continue and collect both errors.
+	c := New(store, fetch, testCfg([]string{"AAA"}, []string{"1d", "1h"}))
+
+	errs := c.CollectOnce(context.Background())
+	if len(errs) != 2 {
+		t.Fatalf("errs = %d, want 2 (one per timeframe, loop continued)", len(errs))
+	}
+	if len(store.upserts) != 0 {
+		t.Errorf("no upserts expected on fetch failure, got %v", store.upserts)
+	}
+}
+
+var errTest = fmtError("boom")
+
+type fmtError string
+
+func (e fmtError) Error() string { return string(e) }
