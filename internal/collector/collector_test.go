@@ -64,13 +64,15 @@ func TestSplitByCadence(t *testing.T) {
 // --- fakes for collectTimeframes integration ---
 
 type fakeFetcher struct {
-	candles map[string][]yahoo.Candle // keyed by interval
-	err     error
-	calls   int
+	candles  map[string][]yahoo.Candle // keyed by interval
+	err      error
+	calls    int
+	lastFrom time.Time // the `from` watermark of the most recent call
 }
 
-func (f *fakeFetcher) Fetch(_ context.Context, _, interval string, _ time.Time) ([]yahoo.Candle, error) {
+func (f *fakeFetcher) Fetch(_ context.Context, _, interval string, from time.Time) ([]yahoo.Candle, error) {
 	f.calls++
+	f.lastFrom = from
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -142,3 +144,49 @@ var errTest = fmtError("boom")
 type fmtError string
 
 func (e fmtError) Error() string { return string(e) }
+
+// watermarkStore reports a fixed non-zero last bar time for every symbol/tf.
+type watermarkStore struct {
+	memStore
+	at time.Time
+}
+
+func (w *watermarkStore) LastBarTime(context.Context, string, string) (time.Time, bool, error) {
+	return w.at, true, nil
+}
+
+func TestWatermarkPassedToFetch(t *testing.T) {
+	at := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
+	fetch := &fakeFetcher{candles: map[string][]yahoo.Candle{}}
+	store := &watermarkStore{at: at}
+	c := New(store, fetch, testCfg([]string{"AAA"}, []string{"1d"}))
+
+	if errs := c.CollectOnce(context.Background()); len(errs) != 0 {
+		t.Fatalf("errs = %v", errs)
+	}
+	if !fetch.lastFrom.Equal(at) {
+		t.Errorf("Fetch from = %v, want watermark %v (incremental path not wired)", fetch.lastFrom, at)
+	}
+}
+
+func TestRunDoesInitialCollectThenStopsOnCtx(t *testing.T) {
+	fetch := &fakeFetcher{candles: map[string][]yahoo.Candle{
+		"1d": {{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Close: 1}},
+	}}
+	c := New(&memStore{}, fetch, testCfg([]string{"AAA"}, []string{"1d"}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled: Run should do one initial pass then return
+
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after ctx cancellation")
+	}
+	if fetch.calls < 1 {
+		t.Errorf("expected at least the initial collect to fetch, calls = %d", fetch.calls)
+	}
+}
