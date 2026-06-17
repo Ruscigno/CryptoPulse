@@ -83,11 +83,22 @@ ones fired.
 
 Evaluated set: `15m, 30m, 1h, 4h, 1d, 3d, 1wk, 1mo` (here `1m` = one month).
 
-- **Native** (fetched from Yahoo): `15m, 30m, 1h, 1d, 1wk, 1mo`.
+- **Native** (fetched from Yahoo): `15m, 30m, 1h, 1d, 1wk, 1mo` (Yahoo's `60m`
+  interval maps to our `1h`).
 - **Derived** (resampled at query time, never stored): `4h` ← `1h`, `3d` ← `1d`.
 
 Yahoo history limits to respect during collection: 15m/30m ≈ 60 days,
 1h ≈ 730 days, daily/weekly/monthly ≈ full history.
+
+**Data source:** Yahoo's v8 chart API
+(`https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=<iv>&range=<r>`,
+or `period1`/`period2` epoch params for incremental fetches), called with a
+`User-Agent` header. We use our own HTTP + JSON client rather than the
+`go-quote` library, because `go-quote`'s `NewQuoteFromYahoo` rejects all
+non-daily intervals (`"yahoo intraday data no longer supported"`). The endpoint
+is unofficial but isolated entirely within `datasource/yahoo`, so the provider
+can be swapped without touching the rest of the system. The `go-quote`
+dependency is removed.
 
 **Resampling:** bucket native bars → `open` = first, `high` = max, `low` = min,
 `close` = last, `volume` = sum. 4h groups 1h bars (4 per bucket); 3d groups 1d
@@ -108,7 +119,7 @@ Each package is small, single-purpose, and independently testable.
 | Package | Responsibility | Depends on |
 |---|---|---|
 | `config` | Load/validate `config.yaml`; parse durations (`3mo`) | — |
-| `datasource/yahoo` | Fetch native-TF OHLCV (wraps `go-quote`); map TF strings → Yahoo intervals; respect history limits | — |
+| `datasource/yahoo` | Fetch native-TF OHLCV via Yahoo's v8 chart API (own HTTP client); map TF strings → Yahoo intervals; respect history limits | — |
 | `storage` | Postgres: schema, upsert bars, query by (symbol, TF, range) | — |
 | `resample` | Aggregate native bars → derived TFs (pure) | — |
 | `indicators` | RSI, volume osc, distance-from-MA + EMA/SMA helpers (pure) | — |
