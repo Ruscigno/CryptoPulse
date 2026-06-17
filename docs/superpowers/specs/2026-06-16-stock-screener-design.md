@@ -52,11 +52,15 @@ For each indicator the result carries:
 - Confirming a pivot requires `w` bars after it, so the most recent `w` bars are
   not yet classified. This is intentional: the "current value" is tested
   *against* confirmed pivots.
-- **Lookback:** scan back over a minimum duration (`peak_lookback`, default
-  `3mo`) converted to a bar count per timeframe. If fewer than 3 pivots are found
-  in that window, **extend the scan further back** until 3 pivots are found or
-  history runs out. (On the monthly timeframe 3 months ≈ 3 bars, so it always
-  extends — fine, since full history is fetched.)
+- **Lookback:** the screener loads `max(warmup, peak_lookback_in_bars)` recent
+  bars per (symbol, timeframe) and takes the 3 most recent confirmed pivots from
+  that window. `peak_lookback` (default `3mo`, converted to a bar count per
+  timeframe) sets the minimum history scanned; the **warmup floor** (the longest
+  indicator period plus room to confirm several pivots) guarantees the window is
+  always large enough to compute the indicator and find pivots — so short
+  lookbacks (e.g. 3 months ≈ 3 monthly bars) are automatically widened. Bounding
+  the load this way also keeps each request O(window) rather than O(full
+  history).
 - "peaks/valleys" = the **3 most recent** confirmed pivots (consistent with the
   screening rule), not the 3 most extreme.
 
@@ -167,17 +171,12 @@ CREATE TABLE bars (
   PRIMARY KEY (symbol, timeframe, ts)
 );
 CREATE INDEX bars_symbol_tf_ts ON bars (symbol, timeframe, ts DESC);
-
-CREATE TABLE collector_state (
-  symbol    TEXT        NOT NULL,
-  timeframe TEXT        NOT NULL,
-  last_ts   TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (symbol, timeframe)
-);
 ```
 
 Upsert via `INSERT ... ON CONFLICT (symbol, timeframe, ts) DO UPDATE`.
-`collector_state.last_ts` enables incremental fetches.
+Incremental fetches use the latest stored bar time (`LastBarTime`, a
+`MAX(ts)` query on `bars`) as the `period1` cursor — no separate
+`collector_state` table is needed, which keeps the schema to a single table.
 
 ## 6. Configuration
 
@@ -296,8 +295,9 @@ Field notes:
 ## 8. Error handling
 
 - Invalid config or unreachable DB at startup → fail fast.
-- Per-(symbol, TF) collection error → log, back off, skip, continue others;
-  retry transient Yahoo errors with backoff.
+- Per-(symbol, TF) collection error → log, skip, continue others. The Yahoo
+  client retries transient failures (transport errors, HTTP 429, HTTP 5xx) with
+  ctx-aware exponential backoff (3 attempts) before giving up on that item.
 - Insufficient history for an indicator (e.g. < 200 bars for EMA₂₀₀, or too few
   bars for pivots) → that indicator reported as `insufficient_data` in
   `warnings` rather than failing the row; the row can still qualify on the
@@ -310,10 +310,15 @@ Field notes:
   / distance), `extrema` (pivot detection + last-3 + lookback extension),
   `resample` (4h/3d bucketing), `screener` match rule, `trend`, `config`
   (parsing + duration `3mo`).
-- **Storage integration test** against a test Postgres: upsert/query roundtrip,
-  `ON CONFLICT` upsert, incremental `collector_state`.
+- **Storage integration test** (gated on `SCREENER_TEST_DSN`) against a test
+  Postgres: upsert/query roundtrip, `ON CONFLICT` upsert, incremental
+  `LastBarTime` cursor.
 - **API handler test** with a fixture-backed fake storage: response shape,
   filtering by params, warnings on insufficient data, error codes.
+- **End-to-end integration test** (gated on `SCREENER_TEST_DSN`): real Postgres
+  + a fake fetcher (no network) exercising collect → store → screen.
+- **Yahoo client test** via `httptest`: transient-error retry/backoff and
+  no-retry on 4xx.
 
 ## 10. Out of scope (v1 / YAGNI)
 

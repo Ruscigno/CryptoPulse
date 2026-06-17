@@ -7,14 +7,17 @@ timeframes.
 ## Configure
 
 Edit `config.yaml` (stocks, timeframes, indicator params). Database credentials
-come from environment variables:
+and TLS mode come from environment variables (never commit them — copy
+`.env.example` to `.env`):
 
     DB_USER, DB_PASSWORD, DB_HOST, DB_PORT (default 5432), DB_NAME
+    DB_SSLMODE (default "require"; use "disable" for the local docker Postgres)
 
 ## Run
 
-    go run . collect --config config.yaml   # fetch + store native-timeframe bars
-    go run . serve   --config config.yaml   # HTTP API (runs collector in-process if enabled)
+    docker compose up -d                     # local Postgres (reads creds from .env)
+    go run . collect --config config.yaml    # fetch + store native-timeframe bars
+    go run . serve   --config config.yaml    # HTTP API (runs collector in-process if enabled)
 
 ## API
 

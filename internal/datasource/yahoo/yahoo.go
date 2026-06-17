@@ -168,8 +168,8 @@ func parseChart(raw []byte) ([]Candle, error) {
 			vol = *q.Volume[i]
 		}
 		out = append(out, Candle{
-			Time:  time.Unix(ts, 0).UTC(),
-			Open:  *o, High: *h, Low: *l, Close: *cl, Volume: vol,
+			Time: time.Unix(ts, 0).UTC(),
+			Open: *o, High: *h, Low: *l, Close: *cl, Volume: vol,
 		})
 	}
 	return out, nil
