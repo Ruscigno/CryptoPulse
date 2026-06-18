@@ -1,11 +1,15 @@
 from __future__ import annotations
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from stock_screener import timeframes as _tf
 from stock_screener import timeframes
-from stock_screener.config import Config, valid_match
+from stock_screener.config import Config, valid_match, parse_duration
+from stock_screener.collector import native_timeframes
 from stock_screener.screener import ALL_INDICATORS, aggregate_matches
 
 log = logging.getLogger("stock_screener.api")
@@ -22,8 +26,40 @@ def _csv(v, default):
     return out
 
 
-def create_app(screener, store, cfg: Config) -> FastAPI:
-    app = FastAPI(title="stock-screener")
+async def _scheduler(collector, cfg):
+    natives = native_timeframes(cfg.timeframes)
+    intraday = [t for t in natives if _tf.get(t).bar_seconds < 86400]
+    daily = [t for t in natives if _tf.get(t).bar_seconds >= 86400]
+    intraday_s = parse_duration(cfg.collector.refresh.intraday)
+    daily_s = parse_duration(cfg.collector.refresh.daily)
+
+    async def loop(subset, period):
+        while True:
+            await asyncio.sleep(period)
+            if subset:
+                await asyncio.to_thread(collector.collect_timeframes, subset)
+
+    await asyncio.to_thread(collector.collect_timeframes, natives)  # initial full pass
+    await asyncio.gather(loop(intraday, intraday_s), loop(daily, daily_s))
+
+
+def create_app(screener, store, cfg: Config, collector=None) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app):
+        task = None
+        if collector is not None and cfg.collector.enabled:
+            task = asyncio.create_task(_scheduler(collector, cfg))
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    app = FastAPI(title="stock-screener", lifespan=lifespan)
 
     def parse(symbols, timeframes_, match, indicators_):
         syms = _csv(symbols, cfg.stocks)

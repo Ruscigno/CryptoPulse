@@ -29,8 +29,15 @@ def serve(config: str = "config.yaml"):
     cfg = load_config(config)
     store = Store(dsn_from_env())
     store.migrate()
-    application = create_app(Screener(store, cfg), store, cfg)
-    uvicorn.run(application, host="0.0.0.0", port=cfg.server.port)
+    collector = Collector(store, cfg)
+    application = create_app(Screener(store, cfg), store, cfg, collector=collector)
+    uvicorn.run(
+        application, host="0.0.0.0", port=cfg.server.port,
+        timeout_keep_alive=5,
+        timeout_graceful_shutdown=10,
+        limit_concurrency=128,
+        limit_max_requests=10000,
+    )
 
 if __name__ == "__main__":
     app()

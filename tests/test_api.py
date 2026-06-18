@@ -61,3 +61,26 @@ def test_warnings_passthrough():
     res = Result(warnings=[Warning("TSLA", "1d", "no_data")])
     body = _client(res).get("/screen").json()
     assert body["warnings"][0]["message"] == "no_data"
+
+
+def test_scheduler_runs_initial_collect(monkeypatch):
+    import asyncio
+    from stock_screener import api
+    from stock_screener.config import Config
+    cfg = Config(stocks=["AAA"], timeframes=["1d", "15m"])
+    cfg.collector.enabled = True
+    cfg.collector.refresh.intraday = "1s"
+    cfg.collector.refresh.daily = "1s"
+    calls = []
+    class FakeCollector:
+        def collect_timeframes(self, tfs): calls.append(list(tfs))
+    async def drive():
+        task = asyncio.create_task(api._scheduler(FakeCollector(), cfg))
+        await asyncio.sleep(0.05)   # let the initial to_thread pass run
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    asyncio.run(drive())
+    assert calls and set(calls[0]) == {"1d", "15m"}  # initial full pass happened
