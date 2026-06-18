@@ -30,10 +30,15 @@ The peak/valley detection is **improved** (not a straight port) per the
 - **Web:** FastAPI + uvicorn (pydantic response models; OpenAPI for free).
 - **Data:** `yfinance` for Yahoo OHLCV.
 - **DB:** SQLAlchemy Core (no ORM) over the existing Postgres `screener` DB.
-- **Indicators:** pandas + `pandas-ta` (Wilder RSI from pandas-ta; volume
-  oscillator and distance-from-MA via pandas `ewm`).
+- **Indicators:** pure **pandas** (Wilder RSI via `ewm(alpha=1/n)`; volume
+  oscillator and distance-from-MA via `ewm`/`rolling`). `pandas-ta` was dropped
+  to avoid pinning `numpy<2`; the three indicators are a few lines of pandas.
 - **Detection:** `scipy.signal.find_peaks` (prominence + distance) on a smoothed
   series.
+- **Resilience:** the yfinance fetch has a 30s timeout and retry-with-backoff
+  for transient errors; `serve` runs an in-process scheduled collector (intraday
+  vs daily cadences) via the FastAPI lifespan; uvicorn runs with keep-alive /
+  concurrency / max-requests limits.
 - **CLI:** Typer (`collect`, `serve`).
 - **Tooling:** `pyproject.toml`; pytest, ruff, mypy.
 - **Python:** 3.12 (matches the iac CI host).
@@ -51,8 +56,8 @@ variables (`.env`, git-ignored) exactly as today: `DB_USER`, `DB_PASSWORD`,
 | `timeframes.py` | TF registry: native vs derived, yfinance interval, parent, bar duration, bucket start | — |
 | `datasource.py` | Fetch OHLCV via yfinance; map TF→interval; incremental (`start=last_bar`); drop the still-forming bar | yfinance, pandas |
 | `storage.py` | `bars` table; `upsert_bars` (ON CONFLICT), `get_bars`, `last_bar_time`, `ping`, `migrate`; pooled engine | SQLAlchemy Core |
-| `resample.py` | Build derived TFs (4h←1h, 3d←1d) via `df.resample().agg(OHLCV)`; drop incomplete trailing bucket when closed-bars-only | pandas |
-| `indicators.py` | `rsi(close, n)` (Wilder via pandas-ta), `volume_oscillator(vol, s, l)`, `distance_from_ma(close, ma_type, n)` → pandas Series | pandas, pandas-ta |
+| `resample.py` | Build derived TFs (4h←1h, 3d←1d) by grouping on `TF.bucket_start` (epoch-anchored, agg OHLCV — `df.resample('3D', origin='epoch')` is broken so we groupby instead); drop incomplete trailing bucket when closed-bars-only | pandas |
+| `indicators.py` | `rsi(close, n)` (Wilder via `ewm`), `volume_oscillator(vol, s, l)`, `distance_from_ma(close, ma_type, n)` → pandas Series | pandas |
 | `detection.py` | `smooth(series, period)` (ewm; 1=identity); `find_extrema(series, min_prominence, min_distance)` → peaks/valleys indices+values | scipy, pandas |
 | `rule.py` | `classify(current, peaks, valleys)`→zone; `qualifies(triggered, requested, match)`; `valid_match(mode)` | — |
 | `screener.py` | Orchestrate per (symbol, tf): load→resample→indicator→smooth+detect→zone/trend→row; aggregate matches | — |
