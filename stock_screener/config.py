@@ -32,7 +32,7 @@ class Detection(BaseModel):
 
     smoothing: int = 1
     min_prominence: float = 0.0
-    min_distance: int = 1
+    min_distance: int = 30
 
     @field_validator("smoothing")
     @classmethod

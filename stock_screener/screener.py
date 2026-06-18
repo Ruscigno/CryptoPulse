@@ -8,6 +8,10 @@ from stock_screener.rule import classify, qualifies
 
 ALL_INDICATORS = ["rsi", "volume_oscillator", "distance_from_ma"]
 
+# Peaks/valleys must be at least this many bars apart (a hard floor over the
+# per-indicator detection.min_distance), so detected pivots are real swings.
+MIN_PIVOT_DISTANCE = 30
+
 @dataclass
 class Pivot:
     value: float
@@ -87,16 +91,28 @@ class Screener:
     # computed on a freshly-seeded, inaccurate average).
     _WARMUP_SPANS = 3
 
+    def _eff_distance(self, det) -> int:
+        """Per-indicator pivot separation, floored at MIN_PIVOT_DISTANCE."""
+        return max(det.min_distance, MIN_PIVOT_DISTANCE)
+
+    def _min_valid_points(self, det) -> int:
+        """Valid (post-warmup) points required before we detect pivots: enough to
+        hold peaks_to_show pivots spaced at least _eff_distance apart."""
+        return self._eff_distance(det) * (self.cfg.screening.peaks_to_show + 1)
+
     def _required_bars(self, tf) -> int:
         longest = max(self.cfg.indicators.rsi.length,
                       self.cfg.indicators.volume_oscillator.long_length,
                       self.cfg.indicators.distance_from_ma.length)
         # Warmup: enough for the longest MA to converge, plus the smoothing EMA.
         warmup = longest * self._WARMUP_SPANS + self._max_smoothing()
-        # Analysis window: at least the peak_lookback scan, with room for several
-        # pivots. This is ADDED to the warmup so the window has that many *valid*
-        # (post-warmup) points, not consumed by it.
-        pivot_room = 5 * (self.cfg.screening.peaks_to_show + 1) + 50
+        # Analysis window: at least the peak_lookback scan, and enough valid points
+        # to hold well-separated pivots. ADDED to the warmup (not consumed by it).
+        pivot_room = max(
+            self._min_valid_points(self.cfg.indicators.rsi.detection),
+            self._min_valid_points(self.cfg.indicators.volume_oscillator.detection),
+            self._min_valid_points(self.cfg.indicators.distance_from_ma.detection),
+        )
         lookback_bars = parse_duration(self.cfg.screening.peak_lookback) // max(tf.bar_seconds, 1)
         analysis = max(int(lookback_bars), pivot_room)
         return warmup + analysis
@@ -112,18 +128,6 @@ class Screener:
             return indicators.distance_from_ma(df["close"], d.ma_type, d.length)
         return None
 
-    def _min_bars(self, ind) -> int:
-        # raw-indicator warmup plus the smoothing EMA warmup
-        det = getattr(self.cfg.indicators, ind).detection
-        extra = det.smoothing - 1
-        if ind == "rsi":
-            return self.cfg.indicators.rsi.length + 1 + extra
-        if ind == "volume_oscillator":
-            return self.cfg.indicators.volume_oscillator.long_length + extra
-        if ind == "distance_from_ma":
-            return self.cfg.indicators.distance_from_ma.length + extra
-        return 0
-
     def _evaluate(self, symbol, tf_name, df, match, indicators_):
         warns: list[Warning] = []
         results: dict[str, IndicatorResult] = {}
@@ -137,14 +141,23 @@ class Screener:
             det = getattr(self.cfg.indicators, ind).detection
             series = detection.smooth(raw.reset_index(drop=True), det.smoothing)
             valid = series.dropna()
-            if valid.empty:
+            # Enough-data guard: need enough VALID (post-warmup) points to detect
+            # pivots that are at least _eff_distance bars apart, else the pivots
+            # are unreliable — skip with a warning rather than emit noise.
+            need_valid = self._min_valid_points(det)
+            if len(valid) < need_valid:
                 warns.append(Warning(symbol, tf_name,
-                    f"insufficient_data: {ind} needs {self._min_bars(ind)} bars, have {len(df)}"))
+                    f"insufficient_data: {ind} needs {need_valid} valid bars, have {len(valid)}"))
                 continue
             idx = int(valid.index[-1])
-            peaks, valleys = detection.find_extrema(series, det.min_prominence, det.min_distance)
-            peaks = detection.last_n(peaks, self.cfg.screening.peaks_to_show)
-            valleys = detection.last_n(valleys, self.cfg.screening.peaks_to_show)
+            # All prominence-qualified pivots, then pick the freshest `n` that are
+            # >= eff_distance bars apart (recency-first; the gap between the
+            # newest pivot and the current bar is intentionally unconstrained).
+            eff = self._eff_distance(det)
+            n = self.cfg.screening.peaks_to_show
+            peaks_all, valleys_all = detection.find_extrema(series, det.min_prominence)
+            peaks = detection.select_recent(peaks_all, eff, n)
+            valleys = detection.select_recent(valleys_all, eff, n)
             zone = classify(float(series.iloc[idx]), peaks, valleys)
             ir = IndicatorResult(
                 latest=float(series.iloc[idx]),

@@ -21,14 +21,14 @@ indicators:
     length: 14
     source: close
     smoothing: { type: SMA, length: 14, bb_stddev: 2 }   # captured; reserved (base RSI used for screening)
-    detection: { smoothing: 3, min_prominence: 8, min_distance: 5 }    # RSI points
+    detection: { smoothing: 3, min_prominence: 8, min_distance: 30 }    # RSI points
   volume_oscillator:
     short_length: 5
     long_length: 10
-    detection: { smoothing: 3, min_prominence: 5, min_distance: 5 }    # %
+    detection: { smoothing: 3, min_prominence: 5, min_distance: 30 }    # %
   distance_from_ma:
     source: close
     ma_type: EMA
     length: 200
     calculation: percent
-    detection: { smoothing: 3, min_prominence: 3, min_distance: 5 }    # %
+    detection: { smoothing: 3, min_prominence: 3, min_distance: 30 }    # %

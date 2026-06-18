@@ -55,26 +55,48 @@ def test_trend_rising_falling_flat():
     assert s._trend(pd.Series([1.0, 2.0]), 0) == "flat"
 
 
-def test_screen_no_warnings_clean_series():
-    # Strengthen: a sufficiently long clean series with distance_from_ma should
-    # produce no insufficient_data warnings, and the qualifying row (if any)
-    # should have zone and latest populated.
-    closes = [10,12,14,12,10,12,14,16,14,12,10,8,10,12,14,12,10,8,6,8,10,12,14]
+def _distance_cfg():
     cfg = _cfg()
     d = cfg.indicators.distance_from_ma
     d.length = 3
     d.ma_type = "SMA"
     d.detection.smoothing = 1
     d.detection.min_prominence = 0.0
-    d.detection.min_distance = 1
+    return cfg
+
+def test_pivot_min_distance_floor():
+    # detection.min_distance is floored at MIN_PIVOT_DISTANCE (30 bars).
+    from stock_screener.screener import MIN_PIVOT_DISTANCE
+    cfg = _cfg()
+    s = Screener(store=None, cfg=cfg)
+    cfg.indicators.rsi.detection.min_distance = 5
+    assert s._eff_distance(cfg.indicators.rsi.detection) == MIN_PIVOT_DISTANCE  # 30
+    cfg.indicators.rsi.detection.min_distance = 45
+    assert s._eff_distance(cfg.indicators.rsi.detection) == 45  # configurable above the floor
+
+def test_enough_data_guard_fires_below_threshold():
+    # ~50 valid points < 30*(peaks_to_show+1)=120 -> guard warns, no pivots emitted.
+    cfg = _distance_cfg()
+    closes = [10.0 + (i % 5) for i in range(50)]
     s = Screener(FakeStore(_daily(closes)), cfg)
     res = s.screen(["AAA"], ["1d"], "any", ["distance_from_ma"])
-    assert res.warnings == [], f"unexpected warnings: {res.warnings}"
-    # The series ends at a high (last value > SMA), so a qualifying row is expected.
-    assert len(res.rows) == 1
-    ir = res.rows[0].indicators["distance_from_ma"]
-    assert ir.zone in ("high", "low", "neutral")
-    assert ir.latest != 0.0  # populated
+    assert any("insufficient_data" in w.message and "valid bars" in w.message for w in res.warnings)
+    assert res.rows == []
+
+def test_enough_data_no_warning_when_sufficient():
+    import math
+    cfg = _distance_cfg()
+    closes = [50 + 20 * math.sin(2 * math.pi * i / 40) for i in range(220)]  # 218 valid > 120
+    s = Screener(FakeStore(_daily(closes)), cfg)
+    res = s.screen(["AAA"], ["1d"], "any", ["distance_from_ma"])
+    assert not any("insufficient_data" in w.message for w in res.warnings)
+    # within peaks (and within valleys) consecutive pivots must be >= 30 bars apart
+    for row in res.rows:
+        ir = row.indicators["distance_from_ma"]
+        for group in (ir.peaks, ir.valleys):
+            times = sorted(p.time for p in group)
+            gaps = [(b - a).days for a, b in zip(times, times[1:])]
+            assert all(g >= 30 for g in gaps), f"pivots closer than 30 bars: {gaps}"
 
 
 def test_insufficient_data_warns():
