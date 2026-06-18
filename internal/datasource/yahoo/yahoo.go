@@ -44,8 +44,11 @@ func New() *Client {
 	}
 }
 
-// rangeFor returns Yahoo's default range string for an interval when no
-// explicit start time is given.
+// rangeFor returns Yahoo's `range` string for an intraday interval, or "" for
+// daily-and-longer intervals. Daily+ intentionally returns "" because Yahoo's
+// `range=max` silently coarsens 1d/1wk/1mo to quarterly bars; those intervals
+// must be fetched via period1/period2 instead (see Fetch), which preserves the
+// requested granularity.
 func rangeFor(interval string) string {
 	switch interval {
 	case "15m", "30m":
@@ -53,7 +56,7 @@ func rangeFor(interval string) string {
 	case "60m", "90m", "1h":
 		return "730d"
 	default: // 1d, 1wk, 1mo
-		return "max"
+		return ""
 	}
 }
 
@@ -65,10 +68,18 @@ func rangeFor(interval string) string {
 func (c *Client) Fetch(ctx context.Context, symbol, interval string, from time.Time) ([]Candle, error) {
 	q := url.Values{}
 	q.Set("interval", interval)
-	if from.IsZero() {
-		q.Set("range", rangeFor(interval))
-	} else {
+	switch {
+	case !from.IsZero():
+		// Incremental fetch from the last stored bar.
 		q.Set("period1", fmt.Sprintf("%d", from.Unix()))
+		q.Set("period2", fmt.Sprintf("%d", time.Now().Unix()))
+	case rangeFor(interval) != "":
+		// Intraday: range-based (Yahoo caps intraday history anyway).
+		q.Set("range", rangeFor(interval))
+	default:
+		// Daily+: full history via period1/period2. NOT range=max — that makes
+		// Yahoo coarsen 1d/1wk/1mo to quarterly bars.
+		q.Set("period1", "0")
 		q.Set("period2", fmt.Sprintf("%d", time.Now().Unix()))
 	}
 	u := c.baseURL + url.PathEscape(symbol) + "?" + q.Encode()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -105,5 +106,44 @@ func TestFetchExhaustsRetries(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&calls); got != 3 {
 		t.Errorf("calls = %d, want 3 (maxAttempts)", got)
+	}
+}
+
+func TestFetchQueryParamsByInterval(t *testing.T) {
+	fixture, _ := os.ReadFile("testdata/aapl_1d.json")
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		_, _ = w.Write(fixture)
+	}))
+	defer srv.Close()
+	c := testClient(srv)
+
+	// Daily: must use period1/period2 (NOT range=max, which Yahoo coarsens to quarterly).
+	if _, err := c.Fetch(context.Background(), "AAPL", "1d", time.Time{}); err != nil {
+		t.Fatalf("Fetch 1d: %v", err)
+	}
+	if gotQuery.Get("range") != "" {
+		t.Errorf("1d: range=%q, want empty (period-based)", gotQuery.Get("range"))
+	}
+	if gotQuery.Get("period1") != "0" || gotQuery.Get("period2") == "" {
+		t.Errorf("1d: want period1=0 & period2 set, got period1=%q period2=%q", gotQuery.Get("period1"), gotQuery.Get("period2"))
+	}
+
+	// Intraday: range-based.
+	if _, err := c.Fetch(context.Background(), "AAPL", "15m", time.Time{}); err != nil {
+		t.Fatalf("Fetch 15m: %v", err)
+	}
+	if gotQuery.Get("range") != "60d" {
+		t.Errorf("15m: range=%q, want 60d", gotQuery.Get("range"))
+	}
+
+	// Incremental (from set): period1 = from, no range.
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := c.Fetch(context.Background(), "AAPL", "1d", from); err != nil {
+		t.Fatalf("Fetch incremental: %v", err)
+	}
+	if gotQuery.Get("range") != "" || gotQuery.Get("period1") != "1767225600" {
+		t.Errorf("incremental: want period1=%d & no range, got period1=%q range=%q", from.Unix(), gotQuery.Get("period1"), gotQuery.Get("range"))
 	}
 }
