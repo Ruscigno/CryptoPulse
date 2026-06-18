@@ -76,11 +76,18 @@ class Screener:
             return resample.to_closed(parent, tf.name)
         return resample.to(parent, tf.name)
 
+    def _max_smoothing(self) -> int:
+        return max(self.cfg.indicators.rsi.detection.smoothing,
+                   self.cfg.indicators.volume_oscillator.detection.smoothing,
+                   self.cfg.indicators.distance_from_ma.detection.smoothing)
+
     def _required_bars(self, tf) -> int:
         longest = max(self.cfg.indicators.rsi.length,
                       self.cfg.indicators.volume_oscillator.long_length,
                       self.cfg.indicators.distance_from_ma.length)
-        warmup = longest + 5 * (self.cfg.screening.peaks_to_show + 1) + 50
+        # Floor must cover the longest indicator warmup PLUS smoothing warmup,
+        # plus room to confirm several pivots.
+        warmup = longest + self._max_smoothing() + 5 * (self.cfg.screening.peaks_to_show + 1) + 50
         lookback_bars = parse_duration(self.cfg.screening.peak_lookback) // max(tf.bar_seconds, 1)
         return max(warmup, int(lookback_bars))
 
@@ -96,12 +103,15 @@ class Screener:
         return None
 
     def _min_bars(self, ind) -> int:
+        # raw-indicator warmup plus the smoothing EMA warmup
+        det = getattr(self.cfg.indicators, ind).detection
+        extra = det.smoothing - 1
         if ind == "rsi":
-            return self.cfg.indicators.rsi.length + 1
+            return self.cfg.indicators.rsi.length + 1 + extra
         if ind == "volume_oscillator":
-            return self.cfg.indicators.volume_oscillator.long_length
+            return self.cfg.indicators.volume_oscillator.long_length + extra
         if ind == "distance_from_ma":
-            return self.cfg.indicators.distance_from_ma.length
+            return self.cfg.indicators.distance_from_ma.length + extra
         return 0
 
     def _evaluate(self, symbol, tf_name, df, match, indicators_):
