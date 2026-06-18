@@ -55,7 +55,7 @@ func rangeFor(interval string) string {
 		return "60d"
 	case "60m", "90m", "1h":
 		return "730d"
-	default: // 1d, 1wk, 1mo, 3mo
+	default: // 1d, 1wk, 1mo
 		return ""
 	}
 }
