@@ -23,3 +23,15 @@ coverage.html
 *.swp
 *~
 .idea/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Claude harness (worktrees, agent state)
+.claude/
