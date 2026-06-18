@@ -63,6 +63,50 @@ def test_warnings_passthrough():
     assert body["warnings"][0]["message"] == "no_data"
 
 
+def test_screen_500_on_engine_error():
+    from stock_screener.config import Config
+    from stock_screener.api import create_app
+    from fastapi.testclient import TestClient
+    class BoomScreener:
+        def screen(self, *a, **k): raise RuntimeError("secret internal detail")
+    class OkStore:
+        def ping(self): pass
+    cfg = Config(stocks=["AAPL"], timeframes=["1d"])
+    c = TestClient(create_app(BoomScreener(), OkStore(), cfg), raise_server_exceptions=False)
+    r = c.get("/screen")
+    assert r.status_code == 500
+    assert "secret internal detail" not in r.text   # no leak
+
+
+def test_matches_500_on_engine_error():
+    from stock_screener.config import Config
+    from stock_screener.api import create_app
+    from fastapi.testclient import TestClient
+    class BoomScreener:
+        def screen(self, *a, **k): raise RuntimeError("secret internal detail")
+    class OkStore:
+        def ping(self): pass
+    cfg = Config(stocks=["AAPL"], timeframes=["1d"])
+    c = TestClient(create_app(BoomScreener(), OkStore(), cfg), raise_server_exceptions=False)
+    r = c.get("/matches")
+    assert r.status_code == 500
+    assert "secret internal detail" not in r.text   # no leak
+
+
+def test_healthz_503_on_ping_failure():
+    from stock_screener.config import Config
+    from stock_screener.api import create_app
+    from stock_screener.screener import Result
+    from fastapi.testclient import TestClient
+    class OkScreener:
+        def screen(self, *a, **k): return Result()
+    class BadStore:
+        def ping(self): raise RuntimeError("db down")
+    cfg = Config(stocks=["AAPL"], timeframes=["1d"])
+    c = TestClient(create_app(OkScreener(), BadStore(), cfg), raise_server_exceptions=False)
+    assert c.get("/healthz").status_code == 503
+
+
 def test_scheduler_runs_initial_collect(monkeypatch):
     import asyncio
     from stock_screener import api

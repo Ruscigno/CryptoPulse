@@ -36,6 +36,47 @@ def test_screen_runs_and_shapes():
         assert row.symbol == "AAA" and row.timeframe == "1d"
         assert "distance_from_ma" in row.indicators
 
+def test_trend_rising_falling_flat():
+    import pandas as pd
+    from stock_screener.screener import Screener
+    from stock_screener.config import Config
+    cfg = Config(stocks=["AAA"], timeframes=["1d"])
+    cfg.screening.trend_lookback = 1
+    cfg.screening.trend_flat_epsilon = 0.0
+    s = Screener(store=None, cfg=cfg)
+    assert s._trend(pd.Series([1.0, 2.0, 3.0]), 2) == "rising"
+    assert s._trend(pd.Series([3.0, 2.0, 1.0]), 2) == "falling"
+    assert s._trend(pd.Series([5.0, 5.0]), 1) == "flat"
+    # epsilon dead-band: small change within epsilon is flat
+    cfg.screening.trend_flat_epsilon = 0.5
+    assert s._trend(pd.Series([100.0, 100.3]), 1) == "flat"
+    assert s._trend(pd.Series([100.0, 101.0]), 1) == "rising"
+    # prev index out of range -> flat
+    assert s._trend(pd.Series([1.0, 2.0]), 0) == "flat"
+
+
+def test_screen_no_warnings_clean_series():
+    # Strengthen: a sufficiently long clean series with distance_from_ma should
+    # produce no insufficient_data warnings, and the qualifying row (if any)
+    # should have zone and latest populated.
+    closes = [10,12,14,12,10,12,14,16,14,12,10,8,10,12,14,12,10,8,6,8,10,12,14]
+    cfg = _cfg()
+    d = cfg.indicators.distance_from_ma
+    d.length = 3
+    d.ma_type = "SMA"
+    d.detection.smoothing = 1
+    d.detection.min_prominence = 0.0
+    d.detection.min_distance = 1
+    s = Screener(FakeStore(_daily(closes)), cfg)
+    res = s.screen(["AAA"], ["1d"], "any", ["distance_from_ma"])
+    assert res.warnings == [], f"unexpected warnings: {res.warnings}"
+    # The series ends at a high (last value > SMA), so a qualifying row is expected.
+    assert len(res.rows) == 1
+    ir = res.rows[0].indicators["distance_from_ma"]
+    assert ir.zone in ("high", "low", "neutral")
+    assert ir.latest != 0.0  # populated
+
+
 def test_insufficient_data_warns():
     cfg = _cfg()  # rsi length 14 but only 3 bars
     s = Screener(FakeStore(_daily([10.0, 11.0, 12.0])), cfg)

@@ -1,6 +1,6 @@
 import pytest
 import pydantic
-from stock_screener.config import parse_duration, load_config
+from stock_screener.config import Config, parse_duration, load_config
 
 
 def test_parse_duration():
@@ -28,3 +28,26 @@ def test_rejects_unknown_timeframe():
 def test_rejects_bad_match():
     with pytest.raises((ValueError, pydantic.ValidationError)):
         load_config("tests/data/bad_match.yaml")
+
+
+def _base():
+    return dict(stocks=["AAA"], timeframes=["1d"])
+
+
+def test_config_rejects_empty_stocks():
+    with pytest.raises((ValueError, pydantic.ValidationError)):
+        Config(stocks=[], timeframes=["1d"])
+
+
+def test_config_rejects_bad_detection():
+    with pytest.raises((ValueError, pydantic.ValidationError)):
+        Config(**_base(), indicators={"rsi": {"detection": {"smoothing": 0}}})
+    with pytest.raises((ValueError, pydantic.ValidationError)):
+        Config(**_base(), indicators={"rsi": {"detection": {"min_distance": 0}}})
+
+
+def test_config_rejects_bad_screening():
+    with pytest.raises((ValueError, pydantic.ValidationError)):
+        Config(**_base(), screening={"peaks_to_show": 0})
+    with pytest.raises((ValueError, pydantic.ValidationError)):
+        Config(**_base(), screening={"trend_lookback": 0})
