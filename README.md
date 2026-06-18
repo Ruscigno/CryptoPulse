@@ -3,7 +3,10 @@
 Python (FastAPI) service that collects Yahoo Finance OHLCV into Postgres and
 screens stocks sitting at a recent extreme (RSI, volume oscillator,
 distance-from-MA) across multiple timeframes. Peak/valley detection uses
-`scipy.signal.find_peaks` (prominence + distance) on a smoothed series.
+`scipy.signal.find_peaks` (prominence) on a smoothed series, then keeps the most
+recent pivots walking newest→oldest with a >= 30-bar minimum separation between
+pivots (the gap to the current bar is unconstrained). It also requires enough
+warmed-up history (e.g. the EMA-200 is converged) before emitting any pivots.
 
 ## Configure
 
