@@ -228,3 +228,131 @@ func TestScreenInternalErrorIsGeneric(t *testing.T) {
 		t.Errorf("response leaked internal error: %q", rec.Body.String())
 	}
 }
+
+func TestAggregateMatches(t *testing.T) {
+	res := screener.Result{
+		Rows: []screener.Row{
+			{Symbol: "AAPL", Timeframe: "1d", Triggered: []string{"rsi", "volume_oscillator"}},
+			{Symbol: "AAPL", Timeframe: "4h", Triggered: []string{"rsi"}},
+			{Symbol: "MSFT", Timeframe: "1d", Triggered: []string{"distance_from_ma"}},
+		},
+	}
+	req := screener.Request{
+		Symbols:    []string{"AAPL", "MSFT", "TSLA"}, // TSLA has no rows -> excluded
+		Timeframes: []string{"1d", "4h"},
+	}
+	got := aggregateMatches(res, req)
+
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].Symbol != "AAPL" || got[1].Symbol != "MSFT" {
+		t.Fatalf("order = %s,%s, want AAPL,MSFT", got[0].Symbol, got[1].Symbol)
+	}
+	if len(got[0].Timeframes) != 2 || got[0].Timeframes[0] != "1d" || got[0].Timeframes[1] != "4h" {
+		t.Errorf("AAPL timeframes = %v, want [1d 4h]", got[0].Timeframes)
+	}
+	if len(got[0].Indicators) != 2 || got[0].Indicators[0] != "rsi" || got[0].Indicators[1] != "volume_oscillator" {
+		t.Errorf("AAPL indicators = %v, want [rsi volume_oscillator]", got[0].Indicators)
+	}
+	if len(got[1].Indicators) != 1 || got[1].Indicators[0] != "distance_from_ma" {
+		t.Errorf("MSFT indicators = %v, want [distance_from_ma]", got[1].Indicators)
+	}
+}
+
+func matchesTestCfg() *config.Config {
+	c := &config.Config{}
+	c.Stocks = []string{"AAPL"}
+	c.Timeframes = []string{"1d", "4h"}
+	c.Screening.Match = "any"
+	return c
+}
+
+func TestMatchesEndpoint(t *testing.T) {
+	res := screener.Result{
+		Rows: []screener.Row{
+			{Symbol: "AAPL", Timeframe: "1d", Triggered: []string{"rsi", "volume_oscillator"}},
+			{Symbol: "AAPL", Timeframe: "4h", Triggered: []string{"rsi"}},
+		},
+		Warnings: []screener.Warning{{Symbol: "MSFT", Timeframe: "1d", Message: "no_data"}},
+	}
+	srv := NewServer(&fakeScreener{res: res}, &fakePinger{}, matchesTestCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/matches", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Criteria struct {
+			Match string `json:"match"`
+		} `json:"criteria"`
+		Matches []struct {
+			Symbol     string   `json:"symbol"`
+			Timeframes []string `json:"timeframes"`
+			Indicators []string `json:"indicators"`
+		} `json:"matches"`
+		Warnings []struct {
+			Message string `json:"message"`
+		} `json:"warnings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Matches) != 1 || body.Matches[0].Symbol != "AAPL" {
+		t.Fatalf("matches = %+v", body.Matches)
+	}
+	m := body.Matches[0]
+	if len(m.Timeframes) != 2 || m.Timeframes[0] != "1d" || m.Timeframes[1] != "4h" {
+		t.Errorf("timeframes = %v", m.Timeframes)
+	}
+	if len(m.Indicators) != 2 || m.Indicators[0] != "rsi" || m.Indicators[1] != "volume_oscillator" {
+		t.Errorf("indicators = %v", m.Indicators)
+	}
+	if len(body.Warnings) != 1 || body.Warnings[0].Message != "no_data" {
+		t.Errorf("warnings = %+v", body.Warnings)
+	}
+	if body.Criteria.Match != "any" {
+		t.Errorf("criteria.match = %q, want any", body.Criteria.Match)
+	}
+}
+
+func TestMatchesValidatesParams(t *testing.T) {
+	srv := NewServer(&fakeScreener{}, &fakePinger{}, matchesTestCfg())
+	for _, q := range []string{"timeframes=7m", "indicators=bogus", "symbols=NOPE", "match=min:0"} {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/matches?"+q, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", q, rec.Code)
+		}
+	}
+}
+
+func TestMatchesDedupesSymbols(t *testing.T) {
+	res := screener.Result{Rows: []screener.Row{
+		{Symbol: "AAPL", Timeframe: "1d", Triggered: []string{"rsi"}},
+	}}
+	srv := NewServer(&fakeScreener{res: res}, &fakePinger{}, matchesTestCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/matches?symbols=AAPL,AAPL", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Criteria struct {
+			Symbols int `json:"symbols"`
+		} `json:"criteria"`
+		Matches []struct {
+			Symbol string `json:"symbol"`
+		} `json:"matches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Matches) != 1 {
+		t.Errorf("matches = %d, want 1 (symbols deduped)", len(body.Matches))
+	}
+	if body.Criteria.Symbols != 1 {
+		t.Errorf("criteria.symbols = %d, want 1 (deduped)", body.Criteria.Symbols)
+	}
+}

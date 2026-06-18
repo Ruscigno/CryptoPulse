@@ -25,6 +25,11 @@ and TLS mode come from environment variables (never commit them — copy
 - `GET /screen` — qualifying (stock, timeframe) rows. Optional query params
   `symbols`, `timeframes`, `match` (`any|all|min:N`), `indicators`; each
   defaults to `config.yaml`.
+- `GET /matches` — lean per-stock list of what meets the criteria. Same query
+  params as `/screen`. Returns one entry per stock:
+  `{ "symbol", "timeframes": [...], "indicators": [...] }` — the timeframes where
+  it qualified and the union of indicators that triggered (no peaks/valleys; use
+  `/screen` for the full detail).
 
 A (stock, timeframe) row qualifies when, per `match`, its indicators are at an
 extreme: current value `>=` the lowest of the last 3 peaks (zone `high`) or

@@ -38,6 +38,7 @@ func NewServer(scr ScreenRunner, db Pinger, cfg *config.Config) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/screen", s.handleScreen)
+	mux.HandleFunc("/matches", s.handleMatches)
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	return mux
 }
@@ -53,17 +54,29 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+// reqError is a client-facing request error with an HTTP status.
+type reqError struct {
+	status int
+	msg    string
+}
+
+// parseRequest builds a screener.Request from the query string (each param
+// defaulting to config) and validates it. Shared by /screen and /matches.
+func (s *Server) parseRequest(r *http.Request) (screener.Request, *reqError) {
 	req := screener.Request{
 		Symbols:    csvOrDefault(r.URL.Query().Get("symbols"), s.cfg.Stocks),
 		Timeframes: csvOrDefault(r.URL.Query().Get("timeframes"), s.cfg.Timeframes),
 		Match:      orDefault(r.URL.Query().Get("match"), s.cfg.Screening.Match),
 		Indicators: csvOrDefault(r.URL.Query().Get("indicators"), screener.AllIndicators),
 	}
+	// Dedupe so a repeated symbol/timeframe isn't evaluated (or listed) twice;
+	// /matches is one-entry-per-stock by definition. (Indicators keep their
+	// reject-on-duplicate behavior below.)
+	req.Symbols = dedupe(req.Symbols)
+	req.Timeframes = dedupe(req.Timeframes)
 	for _, tf := range req.Timeframes {
 		if _, ok := timeframe.Get(tf); !ok {
-			http.Error(w, "unknown timeframe: "+tf, http.StatusBadRequest)
-			return
+			return req, &reqError{http.StatusBadRequest, "unknown timeframe: " + tf}
 		}
 	}
 	allowed := make(map[string]bool, len(s.cfg.Stocks))
@@ -72,27 +85,42 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, sym := range req.Symbols {
 		if !allowed[sym] {
-			http.Error(w, "unknown symbol: "+sym, http.StatusBadRequest)
-			return
+			return req, &reqError{http.StatusBadRequest, "unknown symbol: " + sym}
 		}
 	}
 	if !match.Valid(req.Match) {
-		http.Error(w, "invalid match mode: "+req.Match, http.StatusBadRequest)
-		return
+		return req, &reqError{http.StatusBadRequest, "invalid match mode: " + req.Match}
 	}
 	if err := validateIndicators(req.Indicators); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		return req, &reqError{http.StatusBadRequest, err.Error()}
+	}
+	return req, nil
+}
+
+// run is the shared request lifecycle for the screening endpoints: parse +
+// validate, run the screener, then encode via the endpoint's DTO function. The
+// engine error is logged server-side and returned as a generic 500.
+func (s *Server) run(w http.ResponseWriter, r *http.Request, name string, encode func(screener.Result, screener.Request) any) {
+	req, rerr := s.parseRequest(r)
+	if rerr != nil {
+		http.Error(w, rerr.msg, rerr.status)
 		return
 	}
-
 	result, err := s.scr.Screen(r.Context(), req)
 	if err != nil {
-		// Log the detail server-side; don't leak internals to the client.
-		log.Printf("screen failed: %v", err)
+		log.Printf("%s failed: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, toDTO(result, req))
+	writeJSON(w, encode(result, req))
+}
+
+func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+	s.run(w, r, "screen", func(res screener.Result, req screener.Request) any { return toDTO(res, req) })
+}
+
+func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request) {
+	s.run(w, r, "matches", func(res screener.Result, req screener.Request) any { return toMatchesDTO(res, req) })
 }
 
 // validateIndicators rejects unknown or duplicate indicator names, bounding the
@@ -116,6 +144,57 @@ func validateIndicators(inds []string) error {
 }
 
 // ---- DTOs (stable JSON shape, decoupled from internal types) ----
+
+type matchDTO struct {
+	Symbol     string   `json:"symbol"`
+	Timeframes []string `json:"timeframes"`
+	Indicators []string `json:"indicators"`
+}
+
+// aggregateMatches folds qualifying (stock, timeframe) rows into one entry per
+// stock: the timeframes where it qualified (in request order) and the union of
+// indicators that triggered (deduped, canonical order). Stocks with no
+// qualifying row are omitted. Result order follows req.Symbols.
+func aggregateMatches(res screener.Result, req screener.Request) []matchDTO {
+	type agg struct {
+		tfSeen  map[string]bool
+		indSeen map[string]bool
+	}
+	bySym := make(map[string]*agg, len(req.Symbols))
+	for _, row := range res.Rows {
+		a := bySym[row.Symbol]
+		if a == nil {
+			a = &agg{tfSeen: map[string]bool{}, indSeen: map[string]bool{}}
+			bySym[row.Symbol] = a
+		}
+		a.tfSeen[row.Timeframe] = true
+		for _, ind := range row.Triggered {
+			a.indSeen[ind] = true
+		}
+	}
+
+	out := make([]matchDTO, 0, len(bySym))
+	for _, sym := range req.Symbols {
+		a := bySym[sym]
+		if a == nil {
+			continue
+		}
+		tfs := make([]string, 0, len(a.tfSeen))
+		for _, tf := range req.Timeframes {
+			if a.tfSeen[tf] {
+				tfs = append(tfs, tf)
+			}
+		}
+		inds := make([]string, 0, len(a.indSeen))
+		for _, name := range screener.AllIndicators {
+			if a.indSeen[name] {
+				inds = append(inds, name)
+			}
+		}
+		out = append(out, matchDTO{Symbol: sym, Timeframes: tfs, Indicators: inds})
+	}
+	return out
+}
 
 type pivotDTO struct {
 	Value float64   `json:"value"`
@@ -181,6 +260,31 @@ func toDTO(res screener.Result, req screener.Request) responseDTO {
 	return out
 }
 
+type matchesResponseDTO struct {
+	AsOf     time.Time `json:"as_of"`
+	Criteria struct {
+		Match      string   `json:"match"`
+		Symbols    int      `json:"symbols"`
+		Timeframes []string `json:"timeframes"`
+	} `json:"criteria"`
+	Matches  []matchDTO   `json:"matches"`
+	Warnings []warningDTO `json:"warnings"`
+}
+
+func toMatchesDTO(res screener.Result, req screener.Request) matchesResponseDTO {
+	var out matchesResponseDTO
+	out.AsOf = time.Now().UTC()
+	out.Criteria.Match = req.Match
+	out.Criteria.Symbols = len(req.Symbols)
+	out.Criteria.Timeframes = req.Timeframes
+	out.Matches = aggregateMatches(res, req)
+	out.Warnings = make([]warningDTO, 0, len(res.Warnings))
+	for _, wn := range res.Warnings {
+		out.Warnings = append(out.Warnings, warningDTO(wn))
+	}
+	return out
+}
+
 func pivotsToDTO(in []screener.PivotPoint) []pivotDTO {
 	out := make([]pivotDTO, 0, len(in))
 	for _, p := range in {
@@ -213,4 +317,17 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// dedupe returns in with duplicates removed, preserving first-seen order.
+func dedupe(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
