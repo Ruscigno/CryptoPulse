@@ -21,6 +21,11 @@ def normalize(
     df.index = pd.to_datetime(df.index, utc=True)
     df.index.name = "ts"
     df = df.dropna(subset=["open", "high", "low", "close"])
+    # A NaN volume on an otherwise-valid bar would violate the NOT NULL column
+    # and poison the volume oscillator (and suppress nearby pivots). Treat a
+    # missing volume as 0, keeping the OHLC bar (matches the Go behavior).
+    if "volume" in df.columns:
+        df["volume"] = df["volume"].fillna(0.0)
     if closed_only and len(df):
         cutoff = pd.Timestamp(now) - timedelta(seconds=bar_seconds)
         df = df[df.index <= cutoff]

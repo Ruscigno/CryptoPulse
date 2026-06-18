@@ -31,7 +31,6 @@ def test_upsert_and_get():
     s.upsert_bars("TST", "1d", df)            # idempotent update, no duplicate
     got = s.get_bars("TST", "1d")
     assert len(got) == 2
-    assert got["close"].iloc[0] <= got["close"].iloc[-1] or True  # ascending by ts
-    assert got.index[0] < got.index[1]
+    assert got.index[0] < got.index[1]  # ascending by ts
     assert float(got["close"].iloc[-1]) == 2.7
     assert s.last_bar_time("TST", "1d") == t1
