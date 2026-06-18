@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import yfinance as yf
+
+log = logging.getLogger("stock_screener.datasource")
 
 _COLS = ["open", "high", "low", "close", "volume"]
 
@@ -32,17 +36,40 @@ def normalize(
     return df[_COLS]
 
 
+def _history(
+    symbol: str,
+    kwargs: dict,
+    timeout: int,
+    attempts: int,
+    base_delay: float,
+    sleep=time.sleep,
+) -> pd.DataFrame:
+    last: Exception | None = None
+    for i in range(attempts):
+        try:
+            return yf.Ticker(symbol).history(timeout=timeout, **kwargs)
+        except Exception as e:  # noqa: BLE001 - transient network/HTTP errors are retryable
+            last = e
+            log.warning("yfinance %s attempt %d/%d failed: %s", symbol, i + 1, attempts, e)
+            if i + 1 < attempts:
+                sleep(base_delay * (2**i))
+    raise last
+
+
 def fetch(
     symbol: str,
     interval: str,
     bar_seconds: int,
     start: datetime | None,
     closed_only: bool,
+    timeout: int = 30,
+    attempts: int = 3,
+    base_delay: float = 0.5,
 ) -> pd.DataFrame:
     kwargs: dict = {"interval": interval, "auto_adjust": True}
     if start is not None:
         kwargs["start"] = start
     else:
         kwargs["period"] = "max"
-    raw = yf.Ticker(symbol).history(**kwargs)
+    raw = _history(symbol, kwargs, timeout, attempts, base_delay)
     return normalize(raw, bar_seconds, datetime.now(timezone.utc), closed_only)
