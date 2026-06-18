@@ -69,6 +69,11 @@ func (s *Server) parseRequest(r *http.Request) (screener.Request, *reqError) {
 		Match:      orDefault(r.URL.Query().Get("match"), s.cfg.Screening.Match),
 		Indicators: csvOrDefault(r.URL.Query().Get("indicators"), screener.AllIndicators),
 	}
+	// Dedupe so a repeated symbol/timeframe isn't evaluated (or listed) twice;
+	// /matches is one-entry-per-stock by definition. (Indicators keep their
+	// reject-on-duplicate behavior below.)
+	req.Symbols = dedupe(req.Symbols)
+	req.Timeframes = dedupe(req.Timeframes)
 	for _, tf := range req.Timeframes {
 		if _, ok := timeframe.Get(tf); !ok {
 			return req, &reqError{http.StatusBadRequest, "unknown timeframe: " + tf}
@@ -92,7 +97,10 @@ func (s *Server) parseRequest(r *http.Request) (screener.Request, *reqError) {
 	return req, nil
 }
 
-func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+// run is the shared request lifecycle for the screening endpoints: parse +
+// validate, run the screener, then encode via the endpoint's DTO function. The
+// engine error is logged server-side and returned as a generic 500.
+func (s *Server) run(w http.ResponseWriter, r *http.Request, name string, encode func(screener.Result, screener.Request) any) {
 	req, rerr := s.parseRequest(r)
 	if rerr != nil {
 		http.Error(w, rerr.msg, rerr.status)
@@ -100,27 +108,19 @@ func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.scr.Screen(r.Context(), req)
 	if err != nil {
-		// Log the detail server-side; don't leak internals to the client.
-		log.Printf("screen failed: %v", err)
+		log.Printf("%s failed: %v", name, err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, toDTO(result, req))
+	writeJSON(w, encode(result, req))
+}
+
+func (s *Server) handleScreen(w http.ResponseWriter, r *http.Request) {
+	s.run(w, r, "screen", func(res screener.Result, req screener.Request) any { return toDTO(res, req) })
 }
 
 func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request) {
-	req, rerr := s.parseRequest(r)
-	if rerr != nil {
-		http.Error(w, rerr.msg, rerr.status)
-		return
-	}
-	result, err := s.scr.Screen(r.Context(), req)
-	if err != nil {
-		log.Printf("matches failed: %v", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, toMatchesDTO(result, req))
+	s.run(w, r, "matches", func(res screener.Result, req screener.Request) any { return toMatchesDTO(res, req) })
 }
 
 // validateIndicators rejects unknown or duplicate indicator names, bounding the
@@ -317,4 +317,17 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// dedupe returns in with duplicates removed, preserving first-seen order.
+func dedupe(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }

@@ -38,11 +38,14 @@ then **aggregates those rows by stock**:
 
 - A stock appears in `matches` iff it has at least one qualifying
   `(stock, timeframe)` row (union across the evaluated timeframes).
-- `timeframes` — the timeframes where the stock qualified, in config order.
+- `timeframes` — the timeframes where the stock qualified, in **request order**
+  (the order they appear in the `timeframes` param; defaults to config order).
 - `indicators` — the union of indicator names that triggered across those
   timeframes, de-duplicated, in canonical order
   (`rsi`, `volume_oscillator`, `distance_from_ma`).
-- `matches` is ordered by the request's symbol order (config order).
+- `matches` is ordered by the request's symbol order (defaults to config order).
+- Duplicate `symbols`/`timeframes` in the query are de-duplicated, so a stock
+  never appears twice.
 
 The per-(stock, timeframe) qualification itself is unchanged: a row qualifies
 when, per `match`, its indicators are at an extreme (the existing rule). The flat
@@ -75,8 +78,9 @@ All changes live in `internal/api` — the `screener` package is **not** modifie
 
 - **DRY the request handling:** extract the shared param parsing + validation
   currently inside `handleScreen` into a helper
-  `parseScreenRequest(r) (screener.Request, *apiError)` used by both `/screen`
-  and `/matches`, so the validation rules live in one place.
+  `parseRequest(r) (screener.Request, *reqError)` used by both `/screen`
+  and `/matches`, so the validation rules live in one place. The screener-run +
+  error-handling block is likewise shared via a `run(w, r, name, encode)` helper.
 - **`handleMatches`:** parse+validate via the shared helper → call
   `s.scr.Screen(ctx, req)` → aggregate with a pure function
   `aggregateMatches(res screener.Result, req screener.Request) []matchDTO` →

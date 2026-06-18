@@ -327,3 +327,32 @@ func TestMatchesValidatesParams(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchesDedupesSymbols(t *testing.T) {
+	res := screener.Result{Rows: []screener.Row{
+		{Symbol: "AAPL", Timeframe: "1d", Triggered: []string{"rsi"}},
+	}}
+	srv := NewServer(&fakeScreener{res: res}, &fakePinger{}, matchesTestCfg())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/matches?symbols=AAPL,AAPL", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body struct {
+		Criteria struct {
+			Symbols int `json:"symbols"`
+		} `json:"criteria"`
+		Matches []struct {
+			Symbol string `json:"symbol"`
+		} `json:"matches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Matches) != 1 {
+		t.Errorf("matches = %d, want 1 (symbols deduped)", len(body.Matches))
+	}
+	if body.Criteria.Symbols != 1 {
+		t.Errorf("criteria.symbols = %d, want 1 (deduped)", body.Criteria.Symbols)
+	}
+}
