@@ -81,15 +81,25 @@ class Screener:
                    self.cfg.indicators.volume_oscillator.detection.smoothing,
                    self.cfg.indicators.distance_from_ma.detection.smoothing)
 
+    # EMA convergence factor: a span-N EMA seeded N bars ago still carries ~7%
+    # seed weight; ~3 spans drives that below ~0.3%, so warm with 3x the longest
+    # period before the analysis window (otherwise e.g. distance-from-EMA200 is
+    # computed on a freshly-seeded, inaccurate average).
+    _WARMUP_SPANS = 3
+
     def _required_bars(self, tf) -> int:
         longest = max(self.cfg.indicators.rsi.length,
                       self.cfg.indicators.volume_oscillator.long_length,
                       self.cfg.indicators.distance_from_ma.length)
-        # Floor must cover the longest indicator warmup PLUS smoothing warmup,
-        # plus room to confirm several pivots.
-        warmup = longest + self._max_smoothing() + 5 * (self.cfg.screening.peaks_to_show + 1) + 50
+        # Warmup: enough for the longest MA to converge, plus the smoothing EMA.
+        warmup = longest * self._WARMUP_SPANS + self._max_smoothing()
+        # Analysis window: at least the peak_lookback scan, with room for several
+        # pivots. This is ADDED to the warmup so the window has that many *valid*
+        # (post-warmup) points, not consumed by it.
+        pivot_room = 5 * (self.cfg.screening.peaks_to_show + 1) + 50
         lookback_bars = parse_duration(self.cfg.screening.peak_lookback) // max(tf.bar_seconds, 1)
-        return max(warmup, int(lookback_bars))
+        analysis = max(int(lookback_bars), pivot_room)
+        return warmup + analysis
 
     def _series(self, ind, df):
         if ind == "rsi":

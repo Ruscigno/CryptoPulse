@@ -96,3 +96,16 @@ def test_aggregate_matches():
     assert out[0]["timeframes"] == ["1d","4h"]
     assert out[0]["indicators"] == ["rsi","volume_oscillator"]
     assert out[1]["indicators"] == ["distance_from_ma"]
+
+
+def test_required_bars_warms_long_ema():
+    # distance-from-EMA(200) must be warmed with several spans before the
+    # analysis window, else the average is freshly-seeded and inaccurate.
+    from stock_screener.screener import Screener
+    from stock_screener.config import Config
+    from stock_screener import timeframes
+    cfg = Config(stocks=["A"], timeframes=["1d"])
+    cfg.indicators.distance_from_ma.length = 200
+    s = Screener(store=None, cfg=cfg)
+    need = s._required_bars(timeframes.get("1d"))
+    assert need >= 200 * 3 + 50   # ~3 EMA spans of warmup + an analysis window
