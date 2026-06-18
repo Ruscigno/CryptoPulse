@@ -1,8 +1,7 @@
 from __future__ import annotations
 import os
-from urllib.parse import quote
 import pandas as pd
-from sqlalchemy import (Column, DateTime, Float, MetaData, String, Table,
+from sqlalchemy import (URL, Column, DateTime, Float, MetaData, String, Table,
                         create_engine, func, select, text)
 from sqlalchemy.dialects.postgresql import insert
 
@@ -25,7 +24,11 @@ def dsn_from_env() -> str:
     h, port = os.environ["DB_HOST"], os.getenv("DB_PORT", "5432")
     name = os.environ["DB_NAME"]
     sslmode = os.getenv("DB_SSLMODE", "require")
-    return f"postgresql+psycopg://{quote(u)}:{quote(p)}@{h}:{port}/{name}?sslmode={sslmode}"
+    return URL.create(
+        "postgresql+psycopg",
+        username=u, password=p, host=h, port=int(port),
+        database=name, query={"sslmode": sslmode},
+    ).render_as_string(hide_password=False)
 
 
 class Store:
